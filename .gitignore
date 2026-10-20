@@ -19,6 +19,8 @@
 # misc
 .DS_Store
 *.pem
+*.lnk
+/.tunnel_url
 
 # debug
 npm-debug.log*
@@ -26,7 +28,16 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
+.env.local
 .env*.local
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# tracked templates (NOT ignored)
+!.env.example
 
 # vercel
 .vercel

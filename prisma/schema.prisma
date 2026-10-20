@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Professor {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime  @default(now())
+  courses      Course[]
+}
+
+model Course {
+  id          String    @id @default(cuid())
+  name        String
+  professorId String
+  professor   Professor @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  extraGroups String    @default("")
+  students    Student[]
+  sessions    Session[]
+
+  @@unique([name, professorId])
+}
+
+model Student {
+  id          String              @id @default(cuid())
+  name        String
+  email       String
+  group       String
+  courseId    String
+  course      Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  attendance  AttendanceRecord[]
+
+  @@unique([email, courseId])
+}
+
+model Session {
+  id              String                   @id @default(cuid())
+  courseId        String
+  course          Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name            String
+  date            DateTime
+  groups          String                   // comma-separated groups, e.g. "Group A,Group B"
+  token           String                   @unique @default(cuid())
+  status          String                   @default("open") // "open" | "closed"
+  classroomLat    Float?
+  classroomLng    Float?
+  classroomRadius Int                      @default(50) // meters
+  createdAt       DateTime                 @default(now())
+  attendance      AttendanceRecord[]
+  verTokens       VerificationToken[]
+  unrecognized    UnrecognizedSubmission[]
+}
+
+model AttendanceRecord {
+  id              String    @id @default(cuid())
+  sessionId       String
+  session         Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  verifiedAt      DateTime?
+  status          String    @default("pending") // "pending" | "verified"
+  studentLat      Float?
+  studentLng      Float?
+  studentAccuracy Float?
+  distanceMeters  Float?    // computed at verify time using Haversine
+  createdAt       DateTime  @default(now())
+
+  @@unique([sessionId, studentId])
+}
+
+model VerificationToken {
+  id        String   @id @default(cuid())
+  email     String
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  token     String   @unique @default(cuid())
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model UnrecognizedSubmission {
+  id          String   @id @default(cuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  email       String
+  submittedAt DateTime @default(now())
+}

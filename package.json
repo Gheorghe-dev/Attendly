@@ -1,26 +1,52 @@
 {
-  "name": "temp-app",
+  "name": "qr-attendance-system",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start -H 0.0.0.0",
+    "tunnel": "npx --yes localtunnel --port 3000",
+    "lint": "next lint",
+    "test": "jest --passWithNoTests",
+    "db:seed": "tsx seed/students-sample.ts",
+    "db:excel": "tsx seed/create-sample-excel.ts",
+    "db:demo": "tsx seed/create-demo-excel.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:generate": "prisma generate",
+    "docs:pdf": "node scripts/generate-pdf.js"
   },
   "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
+    "exceljs": "^4.4.0",
+    "next": "14.2.35",
+    "next-auth": "^5.0.0-beta.32",
+    "nodemailer": "^8.0.11",
+    "prisma": "^5.22.0",
+    "qrcode": "^1.5.4",
     "react": "^18",
-    "react-dom": "^18",
-    "next": "14.2.35"
+    "react-dom": "^18"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35",
+    "jest": "^30.5.2",
+    "jest-environment-jsdom": "^30.5.2",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.35"
+    "ts-jest": "^29.4.14",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
   }
 }
