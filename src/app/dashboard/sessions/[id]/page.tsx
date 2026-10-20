@@ -1,567 +1,782 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { QRDisplay } from '@/components/QRDisplay';
+import { Button } from '@/components/ui/Button';
+import { Card, CardTitle, CardDescription } from '@/components/ui/Card';
+import { GroupBadge } from '@/components/ui/Badge';
+import { LiveBadge } from '@/components/ui/LiveBadge';
+import { ProgressRing } from '@/components/ui/ProgressRing';
+import { Avatar } from '@/components/ui/Avatar';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { QRProjectionModal } from '@/components/session/QRProjectionModal';
+import { formatDate, formatTime } from '@/lib/utils';
+import {
+  Radio,
+  Download,
+  Copy,
+  Check,
+  Search,
+  Lock,
+  Unlock,
+  Maximize2,
+  WifiOff,
+  Loader2,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
-interface AttendanceRecord {
-  id: string; status: string; verifiedAt: string | null;
-  studentLat: number | null; studentLng: number | null; studentAccuracy: number | null;
-  distanceMeters: number | null;
-  student: { id: string; name: string; email: string; group: string };
-}
-interface SessionDetail {
-  id: string; name: string; status: string;
-  date: string; groups: string;
-  course: { id: string; name: string };
-  classroomLat: number | null;
-  classroomLng: number | null;
-  classroomRadius: number;
-  attendance: AttendanceRecord[];
-  enrolledStudents: Array<{ id: string; name: string; email: string; group: string }>;
-  unrecognized: Array<{ id: string; email: string; submittedAt: string }>;
+interface RosterStudent {
+  id: string;
+  name: string;
+  email: string;
+  group: string;
+  checkInTime?: string | null;
+  distance?: number | null;
+  isPresent: boolean;
 }
 
-export default function SessionDetailPage() {
+interface SessionData {
+  id: string;
+  name: string;
+  date: string;
+  status: string; // 'open' | 'closed'
+  groups: string;
+  classroomLat?: number | null;
+  classroomLng?: number | null;
+  classroomRadius?: number | null;
+  course: {
+    id: string;
+    name: string;
+  };
+  enrolledStudents: Array<{
+    id: string;
+    name: string;
+    email: string;
+    group: string;
+  }>;
+  attendance: Array<{
+    id: string;
+    studentId: string;
+    student: {
+      id: string;
+      name: string;
+      email: string;
+      group: string;
+    };
+    verifiedAt: string;
+    distanceMeters?: number | null;
+  }>;
+}
+
+export default function LiveSessionMonitorPage() {
   const params = useParams();
-  const router = useRouter();
   const id = params.id as string;
-  const [session, setSession] = useState<SessionDetail | null>(null);
-  const [qr, setQr] = useState<{
+  const router = useRouter();
+
+  const [session, setSession] = useState<SessionData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sseConnected, setSseConnected] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [projectionOpen, setProjectionOpen] = useState(false);
+  const [togglingStatus, setTogglingStatus] = useState(false);
+
+  // Announcer text for screen readers (aria-live="polite")
+  const [ariaAnnouncement, setAriaAnnouncement] = useState('');
+
+  // Set of recently added student IDs to flash gold highlight for 1.2s
+  const [recentCheckedInIds, setRecentCheckedInIds] = useState<Set<string>>(new Set<string>());
+
+  // Filter toolbar
+  const [search, setSearch] = useState('');
+  const [groupFilter, setGroupFilter] = useState('');
+  const [viewFilter, setViewFilter] = useState<'all' | 'present' | 'absent'>('all');
+
+  // QR data
+  const [qrData, setQrData] = useState<{
     qr: string;
     url: string;
-    scannedFromLocalhost?: boolean;
-    baseUrl?: string;
-    tip?: string;
   } | null>(null);
-  const [showQR, setShowQR] = useState(false);
-  const [filter, setFilter] = useState('');
-  const [groupFilter, setGroupFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [toggling, setToggling] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'roster' | 'unrecognized'>('roster');
 
-  const load = useCallback(async () => {
-    const res = await fetch(`/api/sessions/${id}`);
-    if (res.ok) setSession(await res.json());
+  // Load session data
+  const loadInitialData = useCallback(async () => {
+    try {
+      const [sessionRes, qrRes] = await Promise.all([
+        fetch(`/api/sessions/${id}`),
+        fetch(`/api/sessions/${id}/qr`),
+      ]);
+
+      if (sessionRes.ok) {
+        const sData = await sessionRes.json();
+        setSession(sData);
+      }
+      if (qrRes.ok) {
+        const qData = await qrRes.json();
+        setQrData(qData);
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => {
-    load();
-    fetch(`/api/sessions/${id}/qr`).then(r => r.json()).then(setQr);
-  }, [id, load]);
+    loadInitialData();
+  }, [loadInitialData]);
 
-  // SSE live updates
+  // Connect to SSE stream
   useEffect(() => {
-    const es = new EventSource(`/api/sessions/${id}/stream`);
-    es.onmessage = () => load();
-    es.onerror = () => es.close();
-    return () => es.close();
-  }, [id, load]);
+    let eventSource: EventSource | null = null;
+    let retryTimeout: NodeJS.Timeout;
 
-  async function toggleStatus() {
-    if (!session) return;
-    setToggling(true);
-    const newStatus = session.status === 'open' ? 'closed' : 'open';
-    await fetch(`/api/sessions/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    await load();
-    setToggling(false);
-  }
+    function connectSSE() {
+      eventSource = new EventSource(`/api/sessions/${id}/stream`);
 
-  async function duplicateSession() {
-    if (!session) return;
-    setDuplicating(true);
-    try {
-      const res = await fetch(`/api/sessions/${id}/duplicate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+      eventSource.onopen = () => {
+        setSseConnected(true);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && Array.isArray(data.records)) {
+            setSession((prev) => {
+              if (!prev) return prev;
+
+              // Detect newly added records
+              const prevIds = new Set(prev.attendance.map((a) => a.studentId));
+              const newlyAdded = data.records.filter(
+                (r: { studentId: string }) => !prevIds.has(r.studentId)
+              );
+
+              if (newlyAdded.length > 0) {
+                const firstNew = newlyAdded[0];
+                setAriaAnnouncement(`${firstNew.name} a confirmat prezența.`);
+                toast.success(`${firstNew.name} (${firstNew.group}) s-a înregistrat.`);
+
+                // Add to highlight set and remove after 1200ms
+                const newIds: string[] = newlyAdded.map((r: { studentId: string }) => r.studentId);
+                setRecentCheckedInIds((old) => new Set<string>([...Array.from(old), ...newIds]));
+                setTimeout(() => {
+                  setRecentCheckedInIds((old) => {
+                    const next = new Set<string>(old);
+                    newIds.forEach((sid) => next.delete(sid));
+                    return next;
+                  });
+                }, 1200);
+              }
+
+              return {
+                ...prev,
+                status: data.status,
+                attendance: data.records.map((r: { id: string; studentId: string; name: string; email: string; group: string; checkInTime: string; distance: number | null }) => ({
+                  id: r.id,
+                  studentId: r.studentId,
+                  student: {
+                    id: r.studentId,
+                    name: r.name,
+                    email: r.email,
+                    group: r.group,
+                  },
+                  verifiedAt: r.checkInTime,
+                  distanceMeters: r.distance,
+                })),
+              };
+            });
+          }
+        } catch (e) {
+          console.error('[SSE parse error]', e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        setSseConnected(false);
+        eventSource?.close();
+        // Retry connection in 3 seconds
+        retryTimeout = setTimeout(connectSSE, 3000);
+      };
+    }
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) eventSource.close();
+      clearTimeout(retryTimeout);
+    };
+  }, [id]);
+
+  // Target groups array
+  const targetGroups = useMemo(() => {
+    if (!session?.groups) return [];
+    return session.groups.split(',').map((g) => g.trim()).filter(Boolean);
+  }, [session]);
+
+  // Combined Roster (Present + Absent)
+  const roster = useMemo<RosterStudent[]>(() => {
+    if (!session) return [];
+
+    const presentMap = new Map<string, { time: string; distance?: number | null }>();
+    session.attendance.forEach((a) => {
+      presentMap.set(a.studentId, {
+        time: a.verifiedAt,
+        distance: a.distanceMeters,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error ?? 'Could not duplicate.');
-        return;
+    });
+
+    const list: RosterStudent[] = (session.enrolledStudents || []).map((s) => {
+      const pres = presentMap.get(s.id);
+      return {
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        group: s.group,
+        isPresent: Boolean(pres),
+        checkInTime: pres?.time || null,
+        distance: pres?.distance != null ? pres.distance : null,
+      };
+    });
+
+    // Sort: present students first by check-in time desc, then absent students alphabetically
+    return list.sort((a, b) => {
+      if (a.isPresent && !b.isPresent) return -1;
+      if (!a.isPresent && b.isPresent) return 1;
+      if (a.isPresent && b.isPresent) {
+        return (
+          new Date(b.checkInTime || 0).getTime() -
+          new Date(a.checkInTime || 0).getTime()
+        );
       }
-      router.push(`/dashboard/sessions/${data.id}`);
+      return a.name.localeCompare(b.name);
+    });
+  }, [session]);
+
+  // Filtered Roster
+  const filteredRoster = useMemo(() => {
+    return roster.filter((student) => {
+      const q = search.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        student.name.toLowerCase().includes(q) ||
+        student.email.toLowerCase().includes(q);
+
+      const matchesGroup =
+        !groupFilter || student.group.trim() === groupFilter.trim();
+
+      const matchesView =
+        viewFilter === 'all'
+          ? true
+          : viewFilter === 'present'
+          ? student.isPresent
+          : !student.isPresent;
+
+      return matchesSearch && matchesGroup && matchesView;
+    });
+  }, [roster, search, groupFilter, viewFilter]);
+
+  // Metrics calculation
+  const enrolledCount = roster.length;
+  const presentCount = roster.filter((r) => r.isPresent).length;
+  const absentCount = Math.max(0, enrolledCount - presentCount);
+  const attendanceRate =
+    enrolledCount > 0 ? Math.round((presentCount / enrolledCount) * 100) : 0;
+
+  // Toggle session open/closed with confirmation
+  async function toggleSessionStatus() {
+    if (!session) return;
+    const isCurrentlyOpen = session.status === 'open';
+
+    if (isCurrentlyOpen) {
+      const confirmed = confirm(
+        'Ești sigur că vrei să închizi înregistrarea? Studenții care încearcă să scaneze după acest moment vor fi respinși.'
+      );
+      if (!confirmed) return;
+    }
+
+    setTogglingStatus(true);
+    const newStatus = isCurrentlyOpen ? 'closed' : 'open';
+
+    try {
+      const res = await fetch(`/api/sessions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (res.ok) {
+        setSession((prev) => (prev ? { ...prev, status: newStatus } : prev));
+        toast.success(
+          newStatus === 'open'
+            ? 'Sesiunea a fost redeschisă pentru scanare.'
+            : 'Înregistrarea a fost închisă.'
+        );
+      } else {
+        toast.error('Nu s-a putut modifica starea sesiunii.');
+      }
+    } catch {
+      toast.error('Eroare de rețea.');
     } finally {
-      setDuplicating(false);
+      setTogglingStatus(false);
     }
   }
 
-  if (!session) return (
-    <div className="space-y-4 animate-pulse">
-      <div className="h-8 bg-gray-200 rounded w-80" />
-      <div className="grid grid-cols-4 gap-4">
-        {[1,2,3,4].map(i => <div key={i} className="h-28 bg-gray-100 rounded-2xl" />)}
+  function copyPublicLink() {
+    if (!qrData?.url) return;
+    navigator.clipboard.writeText(qrData.url);
+    setCopiedLink(true);
+    toast.success('Linkul de prezență a fost copiat în clipboard.');
+    setTimeout(() => setCopiedLink(false), 2000);
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center text-muted-foreground">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
-      <div className="h-96 bg-gray-100 rounded-2xl" />
-    </div>
-  );
+    );
+  }
 
-  const sessionGroups = session.groups.split(',').map(g => g.trim());
-  const verifiedEmails = new Set(
-    session.attendance.filter(a => a.status === 'verified').map(a => a.student.email)
-  );
+  if (!session) {
+    return (
+      <EmptyState
+        title="Sesiunea nu a fost găsită"
+        description="Sesiunea solicitată nu există sau nu ai permisiunea de a o vizualiza."
+        action={{
+          label: 'Înapoi la cursuri',
+          onClick: () => router.push('/dashboard/courses'),
+          variant: 'outline',
+        }}
+      />
+    );
+  }
 
-  const filteredStudents = session.enrolledStudents.filter(s => {
-    const q = filter.toLowerCase();
-    const textOk = !q || s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
-    const groupOk = !groupFilter || s.group === groupFilter;
-    const present = verifiedEmails.has(s.email);
-    const statusOk = !statusFilter || (statusFilter === 'present' ? present : !present);
-    return textOk && groupOk && statusOk;
-  });
-
-  const presentCount = verifiedEmails.size;
-  const totalCount = session.enrolledStudents.length;
-  const absentCount = totalCount - presentCount;
-  const pct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
-
-  const recentVerified = session.attendance
-    .filter(a => a.status === 'verified')
-    .sort((a, b) => new Date(b.verifiedAt!).getTime() - new Date(a.verifiedAt!).getTime())
-    .slice(0, 5);
-
-  // Proximity stats for verified records that have distance data
-  const verifiedWithDistance = session.attendance.filter(
-    a => a.status === 'verified' && a.studentLat != null && a.studentLng != null
-  );
-  const proximityStats = session.classroomLat != null && session.classroomLng != null
-    ? {
-        in:  verifiedWithDistance.filter(a => (a.distanceMeters ?? Infinity) <= session.classroomRadius).length,
-        out: verifiedWithDistance.filter(a => (a.distanceMeters ?? 0) >  session.classroomRadius).length,
-        none: session.attendance.filter(a => a.status === 'verified' && a.distanceMeters == null).length
-             + (session.attendance.filter(a => a.status === 'verified').length - verifiedWithDistance.length),
-      }
-    : null;
+  const isOpen = session.status === 'open';
 
   return (
-    <div className="space-y-6">
-      {showQR && qr && (
-        <QRDisplay
-          qr={qr.qr} url={qr.url}
-          sessionName={session.name} courseName={session.course.name}
-          onClose={() => setShowQR(false)}
-        />
-      )}
+    <div className="space-y-8 animate-in fade-in duration-300 pb-12">
+      {/* Invisible Screen Reader Announcer */}
+      <div aria-live="polite" className="sr-only">
+        {ariaAnnouncement}
+      </div>
 
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-gray-400 flex-wrap">
-        <Link href="/dashboard" className="hover:text-gray-600">Dashboard</Link>
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-        <Link href={`/dashboard/courses/${session.course.id}`} className="hover:text-gray-600">{session.course.name}</Link>
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-        <span className="text-gray-700 font-medium">{session.name}</span>
-      </nav>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap mb-1">
-            <h1 className="text-2xl font-bold text-gray-900">{session.name}</h1>
-            <span className={session.status === 'open' ? 'badge-open' : 'badge-closed'}>
-              <span className={`w-1.5 h-1.5 rounded-full ${session.status === 'open' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-              {session.status === 'open' ? 'Open' : 'Closed'}
+      {/* ── Top Header ────────────────────────────────────────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-border">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <LiveBadge isOpen={isOpen} />
+            <span className="text-xs font-mono text-muted-foreground">
+              {formatDate(session.date)} la {formatTime(session.date)}
             </span>
-          </div>
-          <p className="text-gray-500 text-sm">
-            {session.course.name} · {new Date(session.date).toLocaleString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </p>
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {sessionGroups.map(g => <span key={g} className="badge-group">{g}</span>)}
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setShowQR(true)}
-            className="btn-primary">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-            </svg>
-            Show QR Code
-          </button>
-          <button onClick={toggleStatus} disabled={toggling}
-            className={session.status === 'open'
-              ? 'btn-danger'
-              : 'inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-medium px-4 py-2 rounded-lg border border-emerald-200 transition-all'
-            }>
-            {session.status === 'open' ? (
-              <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>Close Registration</>
-            ) : (
-              <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>Reopen Registration</>
-            )}
-          </button>
-          <a href={`/api/sessions/${id}/export`}
-            className="btn-secondary">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-            Export Excel
-          </a>
-          <button
-            onClick={duplicateSession}
-            disabled={duplicating}
-            className="inline-flex items-center gap-2 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 font-medium px-4 py-2 rounded-lg border border-purple-200 transition-all disabled:opacity-50"
-            title="Create a copy of this session for a follow-up lecture. Same groups, classroom and radius; date defaults to now."
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            {duplicating ? 'Duplicating…' : 'Duplicate'}
-          </button>
-        </div>
-      </div>
-
-      {/* Warning when professor opened dashboard from localhost — the QR still
-          encodes the LAN/public URL (APP_URL) so phones can reach it, but
-          here we make that obvious and offer a copy-paste phone URL. */}
-      {qr?.scannedFromLocalhost && (
-        <div className="card p-4 bg-amber-50 border-amber-200">
-          <div className="flex items-start gap-3 flex-wrap">
-            <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-amber-900">
-                You opened this dashboard from <code className="bg-amber-100 px-1 rounded">localhost</code> — your phone will not be able to scan a QR that says <code className="bg-amber-100 px-1 rounded">http://localhost:3000/…</code>.
-              </p>
-              <p className="text-sm text-amber-800 mt-1">
-                The QR codes this page generates already use your <strong>LAN base URL</strong> ({qr.baseUrl || 'set APP_URL in .env'}), so scanning them on a phone that&apos;s on the same Wi-Fi will work. To be safe, you can also copy the URL below and text/email it.
-              </p>
-              <div className="mt-3 flex items-center gap-2 bg-white rounded-lg border border-amber-200 p-2">
-                <code className="text-xs text-gray-700 flex-1 break-all px-2">{qr.url}</code>
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard?.writeText(qr.url)}
-                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1.5 rounded-md"
-                >
-                  Copy
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card p-5">
-          <div className="text-3xl font-bold text-blue-700">{totalCount}</div>
-          <div className="text-sm text-gray-500 mt-1">Enrolled</div>
-          <div className="text-xs text-gray-400 mt-0.5">in selected groups</div>
-        </div>
-        <div className="card p-5 bg-emerald-50 border-emerald-200">
-          <div className="text-3xl font-bold text-emerald-700">{presentCount}</div>
-          <div className="text-sm text-gray-500 mt-1">Present</div>
-          <div className="text-xs text-gray-400 mt-0.5">verified attendance</div>
-        </div>
-        <div className="card p-5 bg-red-50 border-red-200">
-          <div className="text-3xl font-bold text-red-600">{absentCount}</div>
-          <div className="text-sm text-gray-500 mt-1">Absent</div>
-          <div className="text-xs text-gray-400 mt-0.5">not yet verified</div>
-        </div>
-        <div className="card p-5">
-          <div className="text-3xl font-bold text-gray-900">{pct}%</div>
-          <div className="text-sm text-gray-500 mt-1">Attendance Rate</div>
-          <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className={`h-2 rounded-full transition-all duration-500 ${pct >= 75 ? 'bg-emerald-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Attendance Table */}
-        <div className="lg:col-span-2 card">
-          {/* Tabs */}
-          <div className="border-b border-gray-100 px-4">
-            <div className="flex gap-4">
-              {[
-                ['roster', `Attendance Roster`, totalCount],
-                ['unrecognized', 'Unrecognized', session.unrecognized.length],
-              ].map(([tab, label, count]) => (
-                <button key={tab} onClick={() => setActiveTab(tab as 'roster' | 'unrecognized')}
-                  className={`pb-3 pt-4 text-sm font-semibold border-b-2 flex items-center gap-2 transition-all ${
-                    activeTab === tab
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-400 hover:text-gray-600'
-                  }`}>
-                  {label}
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    activeTab === tab ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                  }`}>{count}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {activeTab === 'roster' && (
-            <>
-              {/* Filters */}
-              <div className="p-4 border-b border-gray-50 flex flex-wrap gap-3">
-                <div className="relative flex-1 min-w-40">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input value={filter} onChange={e => setFilter(e.target.value)}
-                    className="input pl-9 text-sm" placeholder="Search name or email…" />
-                </div>
-                <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="input w-auto text-sm">
-                  <option value="">All Groups</option>
-                  {sessionGroups.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input w-auto text-sm">
-                  <option value="">All Status</option>
-                  <option value="present">Present only</option>
-                  <option value="absent">Absent only</option>
-                </select>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">#</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Student</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden md:table-cell">Email</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Group</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Status</th>
-                      {session.classroomLat != null && (
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Distance</th>
-                      )}
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden lg:table-cell">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {filteredStudents.map((s, i) => {
-                      const present = verifiedEmails.has(s.email);
-                      const rec = session.attendance.find(a => a.student.email === s.email);
-                      const distance = rec?.distanceMeters;
-                      const inRadius = distance != null && session.classroomLat != null && distance <= session.classroomRadius;
-                      const outRadius = distance != null && session.classroomLat != null && distance >  session.classroomRadius;
-                      return (
-                        <tr key={s.id} className={`hover:bg-gray-50 transition-colors ${present ? '' : ''} ${outRadius ? 'bg-red-50/40' : ''}`}>
-                          <td className="py-3 px-4 text-gray-300 font-mono text-xs">{i + 1}</td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                                present ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                              }`}>
-                                {s.name.charAt(0)}
-                              </div>
-                              <span className="font-medium text-gray-900">{s.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-gray-400 font-mono text-xs hidden md:table-cell">{s.email}</td>
-                          <td className="py-3 px-4"><span className="badge-group">{s.group}</span></td>
-                          <td className="py-3 px-4">
-                            <span className={present ? 'badge-present' : 'badge-absent'}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${present ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                              {present ? 'Present' : 'Absent'}
-                            </span>
-                          </td>
-                          {session.classroomLat != null && (
-                            <td className="py-3 px-4 text-xs">
-                              {distance == null ? (
-                                present ? (
-                                  <span className="text-gray-400">—</span>
-                                ) : (
-                                  <span className="text-gray-300">—</span>
-                                )
-                              ) : inRadius ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                  {distance < 1000 ? `${Math.round(distance)} m` : `${(distance/1000).toFixed(1)} km`}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-semibold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                  {distance < 1000 ? `${Math.round(distance)} m` : `${(distance/1000).toFixed(1)} km`}
-                                </span>
-                              )}
-                            </td>
-                          )}
-                          <td className="py-3 px-4 text-gray-400 text-xs hidden lg:table-cell">
-                            {rec?.verifiedAt ? new Date(rec.verifiedAt).toLocaleTimeString('en-GB') : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 flex justify-between">
-                  <span>Showing {filteredStudents.length} of {totalCount} students</span>
-                  <span>{presentCount} present · {absentCount} absent</span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeTab === 'unrecognized' && (
-            <div>
-              {session.unrecognized.length === 0 ? (
-                <div className="p-12 text-center">
-                  <svg className="w-10 h-10 text-gray-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-gray-400 text-sm">No unrecognized submissions</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {session.unrecognized.map(u => (
-                    <div key={u.id} className="flex items-center justify-between px-4 py-3 hover:bg-orange-50">
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 bg-orange-100 rounded-full flex items-center justify-center">
-                          <svg className="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <span className="font-mono text-sm text-orange-700">{u.email}</span>
-                      </div>
-                      <span className="text-xs text-gray-400">{new Date(u.submittedAt).toLocaleString('en-GB')}</span>
-                    </div>
-                  ))}
-                  <div className="px-4 py-3 bg-orange-50 border-t">
-                    <p className="text-xs text-orange-700">
-                      These emails were submitted but not found in the student list. They are stored for review and never counted as attendance.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-4">
-          {/* QR Quick Access */}
-          {qr && (
-            <div className="card p-5 text-center">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Attendance QR Code</p>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qr.qr} alt="QR Code" className="w-36 h-36 mx-auto mb-3 rounded-lg" />
-              <button onClick={() => setShowQR(true)}
-                className="btn-primary w-full justify-center text-sm">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                Full Screen / Projector
-              </button>
-              <p className="text-xs text-gray-400 mt-2 break-all">{qr.url}</p>
-            </div>
-          )}
-
-          {/* Recent Arrivals */}
-          <div className="card p-5">
-            <div className="flex items-center gap-2 mb-4">
-              {session.status === 'open' && (
-                <span className="flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-              )}
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                {session.status === 'open' ? 'Live — Recent Arrivals' : 'Recent Arrivals'}
-              </p>
-            </div>
-            {recentVerified.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">No verified attendances yet</p>
-            ) : (
-              <div className="space-y-2">
-                {recentVerified.map(a => (
-                  <div key={a.id} className="flex items-center gap-3 p-2 bg-emerald-50 rounded-lg">
-                    <div className="w-7 h-7 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-700 font-bold text-xs flex-shrink-0">
-                      {a.student.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{a.student.name}</p>
-                      <p className="text-xs text-gray-400">{a.student.group} · {a.verifiedAt ? new Date(a.verifiedAt).toLocaleTimeString('en-GB') : ''}</p>
-                    </div>
-                  </div>
+            {targetGroups.length > 0 && (
+              <div className="flex flex-wrap gap-1 items-center ml-1">
+                {targetGroups.map((g) => (
+                  <GroupBadge key={g} group={g} />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Session Info */}
-          <div className="card p-5 space-y-3">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Session Info</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Course</span>
-                <span className="font-medium text-gray-900 text-right">{session.course.name}</span>
+          <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+            {session.course.name}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            Tema sesiunii:{' '}
+            <span className="font-medium text-foreground">{session.name}</span>
+          </p>
+        </div>
+
+        {/* Action Controls */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant={isOpen ? 'outline' : 'accent'}
+            size="sm"
+            loading={togglingStatus}
+            onClick={toggleSessionStatus}
+            className={isOpen ? 'text-danger border-danger/30 hover:bg-danger-soft' : ''}
+          >
+            {isOpen ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+            <span>{isOpen ? 'Închide Înregistrarea' : 'Redeschide Sesiunea'}</span>
+          </Button>
+
+          <a href={`/api/sessions/${id}/export`}>
+            <Button variant="outline" size="sm">
+              <Download className="w-3.5 h-3.5 text-success" />
+              <span>Exportă Excel</span>
+            </Button>
+          </a>
+
+          <Button
+            variant="accent"
+            size="sm"
+            onClick={() => setProjectionOpen(true)}
+            className="shadow-sm"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Afișează QR Proiecție</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Connection Banner (if SSE drops) ─────────────────────────── */}
+      {!sseConnected && (
+        <div className="p-3 rounded-card bg-warning-soft text-warning border border-warning/20 flex items-center justify-between text-xs font-mono">
+          <div className="flex items-center gap-2">
+            <WifiOff className="w-4 h-4 animate-pulse text-warning" />
+            <span>Se reconectează la fluxul Server-Sent Events în timp real…</span>
+          </div>
+          <span className="text-[10px]">Reîncercare automată</span>
+        </div>
+      )}
+
+      {/* ── Metrics Row ────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Metric 1: Înscriși */}
+        <Card className="p-5 space-y-1">
+          <span className="text-[11px] font-mono uppercase text-muted-foreground">
+            Total Înscriși
+          </span>
+          <p className="font-serif text-3xl sm:text-4xl font-semibold text-foreground tabular-nums">
+            {enrolledCount}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Conform catalogului activ</p>
+        </Card>
+
+        {/* Metric 2: Prezenți (Success tone) */}
+        <Card className="p-5 space-y-1 bg-success-soft/30 border-success/20">
+          <span className="text-[11px] font-mono uppercase text-success font-semibold">
+            Prezenți Confirmați
+          </span>
+          <p className="font-serif text-3xl sm:text-4xl font-semibold text-success tabular-nums">
+            {presentCount}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Scanări verificate live</p>
+        </Card>
+
+        {/* Metric 3: Absenți */}
+        <Card className="p-5 space-y-1">
+          <span className="text-[11px] font-mono uppercase text-muted-foreground">
+            Absenți Momentan
+          </span>
+          <p className="font-serif text-3xl sm:text-4xl font-semibold text-foreground/80 tabular-nums">
+            {absentCount}
+          </p>
+          <p className="text-[11px] text-muted-foreground">Studenți neconfirmați</p>
+        </Card>
+
+        {/* Metric 4: Rată Prezență cu ProgressRing */}
+        <Card className="p-5 flex items-center justify-between">
+          <div className="space-y-1">
+            <span className="text-[11px] font-mono uppercase text-muted-foreground">
+              Procent Prezență
+            </span>
+            <p className="font-serif text-3xl sm:text-4xl font-semibold text-accent tabular-nums">
+              {attendanceRate}%
+            </p>
+            <p className="text-[11px] text-muted-foreground">Din total eligibili</p>
+          </div>
+          <ProgressRing percentage={attendanceRate} size={58} strokeWidth={5} />
+        </Card>
+      </div>
+
+      {/* ── Main Content Grid: Live Roster Left + Right Rail ≥1280px ──── */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        {/* ── Left Table Area (Span 8 on XL) ────────────────────────── */}
+        <div className="xl:col-span-8 space-y-5">
+          {/* Toolbar: Search, Group Chips, Segmented View Toggle */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Caută student în catalog…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="flex min-h-[38px] w-full rounded-input border border-input bg-card pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:outline-none transition-all"
+                />
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Date</span>
-                <span className="font-medium text-gray-900">{new Date(session.date).toLocaleDateString('en-GB')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Time</span>
-                <span className="font-medium text-gray-900">{new Date(session.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Groups</span>
-                <span className="font-medium text-gray-900">{sessionGroups.join(', ')}</span>
-              </div>
-              {session.classroomLat != null && session.classroomLng != null ? (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Classroom</span>
-                    <a
-                      className="font-mono text-xs text-blue-600 hover:underline"
-                      href={`https://www.openstreetmap.org/?mlat=${session.classroomLat}&mlon=${session.classroomLng}#map=18/${session.classroomLat}/${session.classroomLng}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {session.classroomLat.toFixed(4)}, {session.classroomLng.toFixed(4)}
-                    </a>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Radius</span>
-                    <span className="font-medium text-gray-900">{session.classroomRadius} m</span>
-                  </div>
-                  {proximityStats && (
-                    <div className="pt-2 mt-2 border-t border-gray-100 space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Proximity</p>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-emerald-700">In classroom</span>
-                        <span className="font-semibold">{proximityStats.in}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-red-600">Outside radius</span>
-                        <span className="font-semibold">{proximityStats.out}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-500">No location</span>
-                        <span className="font-semibold">{proximityStats.none}</span>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="pt-2 mt-2 border-t border-gray-100">
-                  <p className="text-xs text-gray-500">
-                    No classroom location set. Distance checks are disabled.
-                  </p>
-                </div>
+
+              {session?.groups && (
+                <select
+                  value={groupFilter}
+                  onChange={(e) => setGroupFilter(e.target.value)}
+                  className="min-h-[38px] rounded-input border border-input bg-card px-3 py-1.5 text-xs text-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:outline-none transition-all cursor-pointer"
+                  aria-label="Filtrează după grupă"
+                >
+                  <option value="">Toate grupele</option>
+                  {session.groups
+                    .split(',')
+                    .map((g) => g.trim())
+                    .filter(Boolean)
+                    .map((g) => (
+                      <option key={g} value={g}>
+                        Grupa {g}
+                      </option>
+                    ))}
+                </select>
               )}
+
+              {/* Segmented View Toggle: All / Present / Absent */}
+              <div className="flex items-center p-1 rounded-input bg-muted border border-border text-xs select-none">
+                <button
+                  type="button"
+                  onClick={() => setViewFilter('all')}
+                  className={`px-3 py-1 rounded-input font-medium transition-all ${
+                    viewFilter === 'all'
+                      ? 'bg-card text-foreground font-semibold shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Toți ({enrolledCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewFilter('present')}
+                  className={`px-3 py-1 rounded-input font-medium transition-all ${
+                    viewFilter === 'present'
+                      ? 'bg-card text-success font-semibold shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Prezenți ({presentCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewFilter('absent')}
+                  className={`px-3 py-1 rounded-input font-medium transition-all ${
+                    viewFilter === 'absent'
+                      ? 'bg-card text-foreground font-semibold shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Absenți ({absentCount})
+                </button>
+              </div>
+            </div>
+
+            {/* SSE Connection Status Pill */}
+            <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              {sseConnected ? (
+                <span className="flex items-center gap-1.5 text-success">
+                  <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  Conectat Live
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-warning">
+                  <span className="w-2 h-2 rounded-full bg-warning" />
+                  Deconectat
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Roster Table */}
+          {filteredRoster.length === 0 ? (
+            <EmptyState
+              icon={<Radio className="w-6 h-6 text-accent" />}
+              title="Se așteaptă primele scanări…"
+              description="Proiectează codul QR pe ecranul amfiteatrului. Studenții vor apărea instantaneu aici pe măsură ce confirmă prezența."
+              action={{
+                label: 'Deschide Codul QR',
+                onClick: () => setProjectionOpen(true),
+                variant: 'accent',
+              }}
+            />
+          ) : (
+            <div className="rounded-card border border-border bg-card overflow-hidden shadow-xs">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted text-muted-foreground font-medium border-b border-border sticky top-0 z-10">
+                  <tr className="h-12 font-mono text-[11px] uppercase tracking-wider">
+                    <th scope="col" className="px-5 py-3">Student</th>
+                    <th scope="col" className="px-5 py-3">Grupă</th>
+                    <th scope="col" className="hidden md:table-cell px-5 py-3">Email</th>
+                    <th scope="col" className="px-5 py-3">Ora Scanării</th>
+                    <th scope="col" className="px-5 py-3 text-right">Distanță GPS</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border font-mono text-xs">
+                  {filteredRoster.map((student) => {
+                    const isRecentlyAdded = recentCheckedInIds.has(student.id);
+
+                    return (
+                      <tr
+                        key={student.id}
+                        className={`h-12 transition-all duration-300 ${
+                          isRecentlyAdded
+                            ? 'bg-accent/20 animate-pulse'
+                            : student.isPresent
+                            ? 'hover:bg-muted/30 text-foreground'
+                            : 'bg-muted/20 text-muted-foreground hover:bg-muted/30'
+                        }`}
+                      >
+                        <td className="px-5 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <Avatar name={student.name} size="sm" />
+                            <div className="min-w-0 font-sans">
+                              <span
+                                className={`font-semibold block truncate ${
+                                  student.isPresent ? 'text-foreground' : 'text-muted-foreground line-through decoration-border'
+                                }`}
+                              >
+                                {student.name}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-2.5">
+                          <GroupBadge group={student.group} />
+                        </td>
+
+                        <td className="hidden md:table-cell px-5 py-2.5 text-muted-foreground truncate max-w-[200px]" title={student.email}>
+                          {student.email}
+                        </td>
+
+                        <td className="px-5 py-2.5 tabular-nums">
+                          {student.isPresent && student.checkInTime ? (
+                            <span className="text-success font-medium flex items-center gap-1.5">
+                              <Check className="w-3.5 h-3.5 text-success" />
+                              {formatTime(student.checkInTime)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-[11px]">
+                              Neînregistrat
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-2.5 text-right tabular-nums">
+                          {student.isPresent && student.distance != null ? (
+                            <span className="text-accent font-medium">
+                              {student.distance}m distanță
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-[11px]">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right Rail: QR Thumbnail, Link & Telemetry (Span 4 on XL) ── */}
+        <div className="xl:col-span-4 space-y-6">
+          {/* QR Thumbnail Card */}
+          <Card className="p-6 text-center space-y-4">
+            <CardTitle className="text-base">Cod QR de Proiecție</CardTitle>
+            <CardDescription>
+              Fă clic pe imagine pentru a deschide modul de ecran complet pentru videoproiector.
+            </CardDescription>
+
+            {qrData?.qr ? (
+              <div
+                onClick={() => setProjectionOpen(true)}
+                className="bg-white p-4 rounded-card border-2 border-border hover:border-accent shadow-sm inline-block cursor-pointer transition-all duration-200 group mx-auto"
+                title="Afișează pe tot ecranul"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={qrData.qr}
+                  alt="Cod QR de scanare"
+                  className={`w-48 h-48 mx-auto object-contain transition-all ${
+                    !isOpen ? 'opacity-20 blur-[1px]' : 'group-hover:scale-105'
+                  }`}
+                  style={{ imageRendering: 'pixelated' }}
+                />
+                {!isOpen && (
+                  <p className="text-xs text-danger font-semibold mt-1">
+                    Înregistrare blocată
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="w-48 h-48 rounded-card bg-muted flex items-center justify-center mx-auto text-xs text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                Se generează…
+              </div>
+            )}
+
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => setProjectionOpen(true)}
+              className="w-full justify-center"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Deschide Ecran Proiecție (Esc)</span>
+            </Button>
+          </Card>
+
+          {/* Public Link Card */}
+          <Card className="p-5 space-y-3">
+            <span className="text-xs font-semibold text-foreground block">
+              Link Public de Verificare
+            </span>
+            <div className="flex items-center gap-2 p-2 rounded-input bg-muted/60 border border-border font-mono text-xs">
+              <span className="truncate flex-1 text-muted-foreground select-all">
+                {qrData?.url || 'Se încarcă…'}
+              </span>
+              <button
+                type="button"
+                onClick={copyPublicLink}
+                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                title="Copiază linkul"
+              >
+                {copiedLink ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Studenții pot accesa direct acest link de pe telefon dacă nu pot scana codul optic de la distanță.
+            </p>
+          </Card>
+
+          {/* Session Security Telemetry Summary */}
+          <Card className="p-5 space-y-3 text-xs">
+            <span className="text-xs font-semibold text-foreground block border-b border-border pb-2">
+              Parametri de Securitate
+            </span>
+            <div className="space-y-2 text-muted-foreground">
               <div className="flex justify-between">
-                <span className="text-gray-500">Unrecognized</span>
-                <span className={`font-medium ${session.unrecognized.length > 0 ? 'text-orange-600' : 'text-gray-900'}`}>
-                  {session.unrecognized.length}
+                <span>Perimetru GPS:</span>
+                <span className="font-mono text-foreground font-medium">
+                  {session.classroomLat != null
+                    ? `${session.classroomRadius || 50} metri`
+                    : 'Dezactivat'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Grupe permise:</span>
+                <span className="font-mono text-foreground font-medium">
+                  {targetGroups.length > 0 ? targetGroups.join(', ') : 'Toate grupele'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Algoritm distanță:</span>
+                <span className="font-mono text-foreground font-medium">
+                  Haversine (6371 km)
                 </span>
               </div>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
+
+      {/* ── QR Projection Modal ────────────────────────────────────── */}
+      {qrData?.qr && (
+        <QRProjectionModal
+          open={projectionOpen}
+          onClose={() => setProjectionOpen(false)}
+          qrDataUrl={qrData.qr}
+          publicUrl={qrData.url}
+          courseName={session.course.name}
+          sessionName={session.name}
+          targetGroups={targetGroups}
+          presentCount={presentCount}
+          enrolledCount={enrolledCount}
+          isOpen={isOpen}
+        />
+      )}
     </div>
   );
 }

@@ -15,9 +15,18 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   });
   if (!s) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const sessionGroups = s.groups.split(',').map((g: string) => g.trim());
+  const sessionGroups = s.groups
+    ? s.groups
+        .split(',')
+        .map((g: string) => g.trim())
+        .filter(Boolean)
+    : [];
+
   const students = await prisma.student.findMany({
-    where: { courseId: s.courseId, group: { in: sessionGroups } },
+    where: {
+      courseId: s.courseId,
+      ...(sessionGroups.length > 0 ? { group: { in: sessionGroups } } : {}),
+    },
     orderBy: [{ group: 'asc' }, { name: 'asc' }],
   });
 

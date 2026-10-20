@@ -1,8 +1,18 @@
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Card, CardTitle, CardDescription } from '@/components/ui/Card';
 import { SettingsForm } from './SettingsForm';
+import { formatDate } from '@/lib/utils';
+import {
+  GraduationCap,
+  Mail,
+  Calendar,
+  Server,
+} from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   const session = await auth();
@@ -14,62 +24,95 @@ export default async function SettingsPage() {
       email: true,
       name: true,
       createdAt: true,
-      _count: { select: { courses: true } },
+      _count: {
+        select: {
+          courses: true,
+        },
+      },
     },
   });
+
   if (!professor) redirect('/login');
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <nav className="flex items-center gap-2 text-sm text-gray-400">
-        <Link href="/dashboard" className="hover:text-gray-600">Dashboard</Link>
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="text-gray-700 font-medium">Settings</span>
-      </nav>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <PageHeader
+        title="Setări & Securitate"
+        description="Gestionați profilul de cadru didactic, securitatea acreditărilor și starea instanței locale."
+        breadcrumbs={[
+          { label: 'Panou principal', href: '/dashboard' },
+          { label: 'Setări' },
+        ]}
+      />
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500 mt-1">Manage your account security</p>
-      </div>
+      {/* Professor Profile Card */}
+      <Card className="p-6 sm:p-7 shadow-xs border-border space-y-6">
+        <div className="flex items-center gap-3 pb-4 border-b border-border">
+          <div className="w-10 h-10 rounded-input bg-primary text-primary-foreground flex items-center justify-center font-serif font-bold text-base border border-accent/20">
+            {professor.name?.charAt(0) || 'P'}
+          </div>
+          <div>
+            <CardTitle className="text-base font-serif">
+              {professor.name || 'Cadru Didactic'}
+            </CardTitle>
+            <CardDescription>
+              Profil de utilizator autorizat pe instanța locală QR Attendance.
+            </CardDescription>
+          </div>
+        </div>
 
-      {/* Profile */}
-      <div className="card p-6">
-        <h2 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Profile
-        </h2>
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          <div>
-            <dt className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Name</dt>
-            <dd className="font-medium text-gray-900 mt-1">{professor.name}</dd>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+          <div className="p-3.5 rounded-input bg-muted/40 border border-border/50 flex items-center gap-3">
+            <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Adresă de e-mail
+              </div>
+              <div className="font-semibold text-foreground truncate mt-0.5">
+                {professor.email}
+              </div>
+            </div>
           </div>
-          <div>
-            <dt className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Email</dt>
-            <dd className="font-mono text-gray-900 mt-1 break-all">{professor.email}</dd>
-          </div>
-          <div>
-            <dt className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Courses</dt>
-            <dd className="font-medium text-gray-900 mt-1">{professor._count.courses}</dd>
-          </div>
-          <div>
-            <dt className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Member since</dt>
-            <dd className="font-medium text-gray-900 mt-1">
-              {new Date(professor.createdAt).toLocaleDateString('en-GB', {
-                year: 'numeric', month: 'long', day: 'numeric',
-              })}
-            </dd>
-          </div>
-        </dl>
-        <p className="text-xs text-gray-400 mt-4">
-          To change your name or email, edit the professor record directly in the database for now.
-        </p>
-      </div>
 
-      {/* Change password */}
+          <div className="p-3.5 rounded-input bg-muted/40 border border-border/50 flex items-center gap-3">
+            <GraduationCap className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Discipline alocate
+              </div>
+              <div className="font-semibold text-foreground mt-0.5 tabular-nums">
+                {professor._count.courses} cursuri active
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-input bg-muted/40 border border-border/50 flex items-center gap-3">
+            <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Data înregistrării
+              </div>
+              <div className="font-semibold text-foreground mt-0.5">
+                {formatDate(professor.createdAt)}
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-input bg-muted/40 border border-border/50 flex items-center gap-3">
+            <Server className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Mod găzduire
+              </div>
+              <div className="font-semibold text-foreground mt-0.5 flex items-center gap-1.5">
+                <span>Self-hosted (SQLite)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Password Change Form */}
       <SettingsForm />
     </div>
   );

@@ -1,8 +1,14 @@
-import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 
-export default async function HomePage() {
+export const dynamic = 'force-dynamic';
+
+export default async function RootPage() {
   const session = await auth();
-  if (session) redirect('/dashboard');
-  else redirect('/login');
+
+  if (session?.user) {
+    redirect('/dashboard');
+  }
+
+  redirect('/login');
 }

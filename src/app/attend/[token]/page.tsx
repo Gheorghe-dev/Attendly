@@ -1,288 +1,537 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
 
-interface SessionInfo {
+import React, { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { Logo } from '@/components/branding/Logo';
+import { formatDate, formatTime } from '@/lib/utils';
+import {
+  MapPin,
+  Compass,
+  ArrowRight,
+  Loader2,
+  AlertTriangle,
+  Lock,
+  ChevronDown,
+  ChevronUp,
+  XCircle,
+  HelpCircle,
+} from 'lucide-react';
+
+interface SessionMeta {
   courseName: string;
   sessionName: string;
   date: string;
   status: string;
-  classroomLat?: number | null;
-  classroomLng?: number | null;
-  classroomRadius?: number | null;
+  requiresLocation: boolean;
+  classroomRadius?: number;
 }
 
-export default function AttendPage() {
+interface SuccessData {
+  student: {
+    name: string;
+    email: string;
+    group: string;
+  };
+  courseName: string;
+  sessionName: string;
+  checkInTime: string;
+  distance?: number | null;
+  message?: string;
+  isAlreadyRegistered?: boolean;
+}
+
+export default function StudentAttendPage() {
   const params = useParams();
   const token = params.token as string;
-  const [info, setInfo] = useState<SessionInfo | null>(null);
-  const [email, setEmail] = useState('');
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-  const [devUrl, setDevUrl] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState('');
-  const [shareLocation, setShareLocation] = useState(true);
-  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
 
+  const [meta, setMeta] = useState<SessionMeta | null>(null);
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [metaError, setMetaError] = useState('');
+
+  // Flow step: 1 (Email) -> 2 (Location Permission) -> 3 (Submitting) -> 4 (Success)
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Form states
+  const [email, setEmail] = useState('');
+  const [acquiringGps, setAcquiringGps] = useState(false);
+  const [gpsErrorType, setGpsErrorType] = useState<'denied' | 'timeout' | null>(null);
+  const [showIosGuide, setShowIosGuide] = useState(false);
+
+  // Submission error
+  const [apiError, setApiError] = useState<{
+    code: string;
+    title: string;
+    message: string;
+    distance?: number;
+    allowedRadius?: number;
+  } | null>(null);
+
+  // Success state
+  const [successData, setSuccessData] = useState<SuccessData | null>(null);
+
+  // Load session metadata
   useEffect(() => {
     fetch(`/api/attend/${token}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) setLoadError(data.error);
-        else setInfo(data);
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.code === 'NOT_FOUND' || data.error) {
+          setMetaError(data.error || 'Sesiune inexistentă.');
+        } else {
+          setMeta(data);
+        }
       })
-      .catch(() => setLoadError('Could not load session. Check your internet connection.'));
+      .catch(() => setMetaError('Conexiunea la server a eșuat. Verifică rețeaua.'))
+      .finally(() => setLoadingMeta(false));
   }, [token]);
 
-  function tryGetLocation(): Promise<{ lat: number; lng: number; accuracy: number } | null> {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) { resolve(null); return; }
-      setLocationStatus('requesting');
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const geo = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
-          setLocationStatus('granted');
-          resolve(geo);
-        },
-        () => {
-          setLocationStatus('denied');
-          resolve(null);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-      );
-    });
+  // Step 1 -> Step 2
+  function handleEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !email.includes('@')) return;
+    setApiError(null);
+
+    if (meta?.requiresLocation) {
+      setStep(2);
+    } else {
+      // Direct submit if no GPS required
+      submitAttendance(null);
+    }
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitStatus('loading');
-    setMessage('');
+  // Request GPS
+  function requestLocation() {
+    if (!navigator.geolocation) {
+      setGpsErrorType('timeout');
+      return;
+    }
+
+    setAcquiringGps(true);
+    setGpsErrorType(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const c = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        setAcquiringGps(false);
+        // Automatically submit with acquired coords
+        submitAttendance(c);
+      },
+      (err) => {
+        setAcquiringGps(false);
+        if (err.code === 1) {
+          setGpsErrorType('denied');
+        } else {
+          setGpsErrorType('timeout');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  // Final submission
+  async function submitAttendance(
+    locationCoords: { lat: number; lng: number; accuracy: number } | null
+  ) {
+    setStep(3);
+    setApiError(null);
+
     try {
-      let geolocation: { lat: number; lng: number; accuracy: number } | null = null;
-      if (shareLocation) {
-        geolocation = await tryGetLocation();
-      }
       const res = await fetch(`/api/attend/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
-          geolocation,
+          geolocation: locationCoords,
         }),
       });
+
       const data = await res.json();
-      if (res.ok) {
-        setSubmitStatus('sent');
-        setMessage(data.message);
-        setDevUrl(typeof data.verificationUrl === 'string' ? data.verificationUrl : null);
-      } else {
-        setSubmitStatus('error');
-        setMessage(data.error);
-        // If SMTP failed but the API still handed us a dev URL, surface it as well.
-        if (typeof data.verificationUrl === 'string') {
-          setDevUrl(data.verificationUrl);
-          setSubmitStatus('sent');
-          setMessage(
-            'Email could not be sent, but a verification link was generated. Use the button below to continue.'
-          );
+
+      if (!res.ok) {
+        // Humanize error states
+        let title = 'Înregistrare eșuată';
+        let message = data.error || 'A apărut o problemă la confirmarea prezenței.';
+
+        if (data.code === 'NOT_IN_ROSTER') {
+          title = 'Email nerecunoscut în catalog';
+          message =
+            'Adresa introdusă nu se află în catalogul oficial al acestui curs. Verifică dacă ai introdus adresa instituțională corectă.';
+        } else if (data.code === 'GROUP_NOT_ALLOWED') {
+          title = 'Grupă neprogramată';
+          message = data.error;
+        } else if (data.code === 'OUTSIDE_GEOFENCE') {
+          title = 'În afara perimetrului sălii';
+          message = data.error;
+        } else if (data.code === 'SESSION_CLOSED') {
+          title = 'Sesiune închisă';
+          message =
+            'Înregistrarea prezenței a fost oprită de către profesorul titular.';
+        } else if (data.code === 'LOCATION_REQUIRED') {
+          title = 'Locație obligatorie';
+          message = 'Pentru această sesiune este obligatoriu acordul GPS.';
         }
+
+        setApiError({
+          code: data.code,
+          title,
+          message,
+          distance: data.distance,
+          allowedRadius: data.allowedRadius,
+        });
+
+        // Go back to appropriate step
+        setStep(data.code === 'LOCATION_REQUIRED' || data.code === 'OUTSIDE_GEOFENCE' ? 2 : 1);
+        return;
       }
+
+      // Check for ALREADY_CHECKED_IN or SUCCESS
+      setSuccessData({
+        student: data.student,
+        courseName: data.courseName || meta?.courseName || 'Curs Universitar',
+        sessionName: data.sessionName || meta?.sessionName || 'Sesiune',
+        checkInTime: data.checkInTime || data.originalCheckInTime || new Date().toISOString(),
+        distance: data.distance,
+        isAlreadyRegistered: data.code === 'ALREADY_CHECKED_IN',
+      });
+
+      setStep(4);
     } catch {
-      setSubmitStatus('error');
-      setMessage('Network error. Please check your connection and try again.');
+      setApiError({
+        code: 'NETWORK_ERROR',
+        title: 'Eroare de conexiune',
+        message: 'Nu s-a putut contacta serverul. Verifică dacă telefonul este conectat la internet.',
+      });
+      setStep(1);
     }
   }
 
-  if (loadError) {
+  // Loading state
+  if (loadingMeta) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center space-y-3">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
+        <p className="text-xs font-mono text-muted-foreground">
+          Se conectează la sesiunea de curs…
+        </p>
+      </div>
+    );
+  }
+
+  // 404 / Invalid token error
+  if (metaError || !meta) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-[420px] rounded-card border border-border bg-card p-7 text-center space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-danger-soft text-danger flex items-center justify-center mx-auto">
+            <XCircle className="w-6 h-6" />
           </div>
-          <h2 className="font-bold text-gray-900 text-lg mb-2">Session Not Found</h2>
-          <p className="text-gray-500 text-sm">{loadError}</p>
+          <h2 className="font-serif text-xl font-semibold text-foreground">
+            Cod QR Invalid sau Expirat
+          </h2>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {metaError || 'Sesiunea de prezență nu a fost găsită sau a fost ștearsă.'}
+          </p>
         </div>
       </div>
     );
   }
 
-  const isClosed = info?.status === 'closed';
+  // If session is officially closed
+  if (meta.status === 'closed' && step !== 4) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-[420px] rounded-card border border-border bg-card p-7 text-center space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-muted text-muted-foreground flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+          <h2 className="font-serif text-xl font-semibold text-foreground">
+            Sesiune Închisă
+          </h2>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Înregistrarea prezenței pentru cursul{' '}
+            <span className="font-semibold text-foreground">{meta.courseName}</span> a
+            fost închisă de profesor. Nu se mai acceptă scanări noi.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white text-center">
-          <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          </div>
-          {info ? (
-            <>
-              <h1 className="text-xl font-bold">{info.courseName}</h1>
-              <p className="text-blue-200 text-sm mt-1">{info.sessionName}</p>
-              <p className="text-blue-300 text-xs mt-1">
-                {new Date(info.date).toLocaleDateString('en-GB', {
-                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-                })}
-              </p>
-            </>
-          ) : (
-            <div className="space-y-2">
-              <div className="h-5 bg-white/20 rounded animate-pulse" />
-              <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mx-auto" />
-            </div>
-          )}
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-between p-4 sm:p-6 select-none overflow-x-hidden">
+      {/* ── Header: Logo + Course Details ───────────────────────────── */}
+      <div className="w-full max-w-[420px] mx-auto pt-2 pb-6 space-y-3 text-center">
+        <Logo size="sm" className="mx-auto" />
+        <div className="space-y-0.5">
+          <h1 className="font-serif text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+            {meta.courseName}
+          </h1>
+          <p className="text-xs text-muted-foreground font-mono">
+            {meta.sessionName} · {formatDate(meta.date)}
+          </p>
         </div>
 
-        {/* Body */}
-        <div className="p-6">
-          {isClosed ? (
-            <div className="text-center py-4">
-              <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
+        {/* Slim Progress Indicator (Step 1 -> Step 2) */}
+        {step < 4 && meta.requiresLocation && (
+          <div className="flex items-center justify-center gap-1.5 pt-2">
+            <span
+              className={`h-1 rounded-full transition-all duration-300 ${
+                step >= 1 ? 'w-8 bg-accent' : 'w-3 bg-muted'
+              }`}
+            />
+            <span
+              className={`h-1 rounded-full transition-all duration-300 ${
+                step >= 2 ? 'w-8 bg-accent' : 'w-3 bg-muted'
+              }`}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── Main Step Card ─────────────────────────────────────────── */}
+      <div className="w-full max-w-[420px] mx-auto my-auto">
+        <div className="rounded-card border border-border bg-card p-6 sm:p-7 shadow-md space-y-6">
+          {/* Error Banner if any */}
+          {apiError && (
+            <div className="p-3.5 rounded-card bg-danger-soft text-danger border border-danger/20 text-xs space-y-1">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{apiError.title}</span>
               </div>
-              <h2 className="font-bold text-gray-900 text-lg mb-1">Registration Closed</h2>
-              <p className="text-gray-500 text-sm">This session is no longer accepting attendance submissions.</p>
+              <p className="text-[11px] leading-relaxed text-foreground/80">
+                {apiError.message}
+              </p>
             </div>
-          ) : submitStatus === 'sent' ? (
-            <div className="text-center py-4">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
+          )}
+
+          {/* ── STEP 1: Email Input ─────────────────────────────────── */}
+          {step === 1 && (
+            <form onSubmit={handleEmailSubmit} className="space-y-5">
+              <div className="space-y-1">
+                <h2 className="font-serif text-lg font-semibold text-foreground">
+                  Confirmă Prezența
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Introdu adresa oficială de email primită de la universitate.
+                </p>
               </div>
-              <h2 className="font-bold text-gray-900 text-lg mb-2">Check Your Email!</h2>
-              <p className="text-gray-600 text-sm leading-relaxed mb-4">{message}</p>
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left">
-                <p className="text-xs text-amber-800 font-semibold mb-1">⏱ Important</p>
-                <p className="text-xs text-amber-700">The verification link expires in <strong>15 minutes</strong>. Please click it right away.</p>
-              </div>
-              {devUrl && (
-                <div className="mt-5 text-left">
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-3">
-                    <p className="text-xs text-emerald-800 font-semibold mb-1">
-                      🔧 Dev Mode — no SMTP configured
-                    </p>
-                    <p className="text-xs text-emerald-700">
-                      No real email was sent. Tap the button below to verify attendance instantly.
-                      (Set <code className="bg-emerald-100 px-1 rounded">SMTP_HOST</code>,{' '}
-                      <code className="bg-emerald-100 px-1 rounded">SMTP_USER</code>,{' '}
-                      <code className="bg-emerald-100 px-1 rounded">SMTP_PASS</code> in{' '}
-                      <code className="bg-emerald-100 px-1 rounded">.env</code> to switch to real email.)
-                    </p>
-                  </div>
-                  <a
-                    href={devUrl}
-                    className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-base transition-all text-center"
-                  >
-                    Verify My Attendance →
-                  </a>
-                  <p className="text-xs text-gray-400 mt-2 break-all text-center">{devUrl}</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <form onSubmit={submit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  University Email Address
+
+              <div className="space-y-1.5 text-left">
+                <label className="block text-xs font-medium text-foreground">
+                  Email universitar
                 </label>
                 <input
                   type="email"
                   required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:border-blue-500 transition-all placeholder-gray-300"
-                  placeholder="you@university.edu"
-                  autoComplete="email"
+                  autoFocus
                   inputMode="email"
-                  disabled={submitStatus === 'loading'}
+                  autoComplete="email"
+                  autoCapitalize="off"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="student@student.univ.ro"
+                  className="flex min-h-[48px] w-full rounded-input border border-input bg-card px-3.5 py-3 text-base text-foreground placeholder:text-muted-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:outline-none transition-all"
                 />
+                <p className="text-[11px] text-muted-foreground font-mono">
+                  Folosește adresa cu care ești înscris în catalogul oficial.
+                </p>
               </div>
-
-              {submitStatus === 'error' && message && (
-                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
-                  <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-sm text-red-700 leading-relaxed">{message}</p>
-                </div>
-              )}
-
-              {/* Location sharing — optional but recommended */}
-              <label className={`flex items-start gap-3 p-3 rounded-2xl border-2 cursor-pointer transition-all ${
-                shareLocation ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={shareLocation}
-                  onChange={(e) => setShareLocation(e.target.checked)}
-                  className="mt-1 accent-blue-600"
-                  disabled={submitStatus === 'loading'}
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    Share my location
-                    {info?.classroomLat != null && (
-                      <span className="text-xs font-normal text-gray-500 ml-1">
-                        (verifies you are in the classroom)
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {info?.classroomLat != null
-                      ? 'Your professor set a classroom location. Sharing confirms you are in the room.'
-                      : 'Optional. Helps your professor confirm attendance. Not stored after this session.'}
-                  </p>
-                  {locationStatus === 'granted' && (
-                    <p className="text-xs text-emerald-700 mt-1">Location captured.</p>
-                  )}
-                  {locationStatus === 'denied' && (
-                    <p className="text-xs text-amber-700 mt-1">Location was denied. You can still submit.</p>
-                  )}
-                </div>
-              </label>
 
               <button
                 type="submit"
-                disabled={submitStatus === 'loading' || !email.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-base transition-all flex items-center justify-center gap-2"
+                className="w-full min-h-[48px] rounded-input bg-accent text-white dark:text-neutral-900 font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-accent/90 active:scale-[0.98] transition-all shadow-sm cursor-pointer"
               >
-                {submitStatus === 'loading' ? (
-                  <>
-                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Submitting…
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Submit Attendance
-                  </>
-                )}
+                <span>Continuă</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
-
-              <p className="text-xs text-gray-400 text-center">
-                A verification link will be sent to your university email.
-              </p>
             </form>
           )}
+
+          {/* ── STEP 2: Location Permission Explainer ───────────────── */}
+          {step === 2 && (
+            <div className="space-y-5 text-center">
+              <div className="w-12 h-12 rounded-full bg-accent-soft text-accent flex items-center justify-center mx-auto border border-accent/20">
+                <MapPin className="w-6 h-6" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h2 className="font-serif text-lg font-semibold text-foreground">
+                  Verificare Perimetru Sală
+                </h2>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Profesorul a activat verificarea prezenței fizice în amfiteatru. Browserul tău va calcula distanța până la catedră.
+                </p>
+              </div>
+
+              {/* True Privacy Disclosure */}
+              <div className="p-3 rounded-card bg-muted/50 border border-border text-[11px] text-muted-foreground text-left space-y-1">
+                <span className="font-semibold text-foreground block">
+                  Protecția intimității:
+                </span>
+                <p>
+                  Coordonatele GPS sunt folosite exclusiv în acest moment pentru calculul distanței și nu sunt stocate permanent pe dispozitive terțe.
+                </p>
+              </div>
+
+              {/* Permission Denied Resolution Accordion */}
+              {gpsErrorType === 'denied' && (
+                <div className="text-left rounded-card border border-warning/30 bg-warning-soft/40 p-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-warning font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <HelpCircle className="w-4 h-4" />
+                      Permisiunea GPS a fost blocată
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowIosGuide(!showIosGuide)}
+                      className="p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      {showIosGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  {showIosGuide && (
+                    <div className="text-[11px] text-muted-foreground space-y-1.5 pt-1 border-t border-border">
+                      <p className="font-semibold text-foreground">Cum reactivezi localizarea:</p>
+                      <p>
+                        • <strong>iPhone (Safari):</strong> Apasă pe pictograma &quot;aA&quot; din stânga barei de adrese → Setări pagină web → Locație → Permite.
+                      </p>
+                      <p>
+                        • <strong>Android (Chrome):</strong> Apasă pe pictograma de lacăt din bara de sus → Permisiuni → Locație → Activează.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  disabled={acquiringGps}
+                  onClick={requestLocation}
+                  className="w-full min-h-[48px] rounded-input bg-accent text-white dark:text-neutral-900 font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-accent/90 active:scale-[0.98] transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  {acquiringGps ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Se detectează semnalul GPS…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Compass className="w-4 h-4" />
+                      <span>Permite Locația &amp; Înregistrează</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline p-2"
+                >
+                  Schimbă emailul ({email})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 3: Submitting State ────────────────────────────── */}
+          {step === 3 && (
+            <div className="py-8 text-center space-y-4">
+              <Loader2 className="w-10 h-10 animate-spin text-accent mx-auto" />
+              <div className="space-y-1">
+                <h3 className="font-serif text-lg font-semibold text-foreground">
+                  Se verifică prezența…
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Validare catalog universitar și verificare perimetru.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── STEP 4: Animated Success Screen ─────────────────────── */}
+          {step === 4 && successData && (
+            <div className="text-center space-y-6 py-2">
+              {/* CSS Animated SVG Checkmark */}
+              <div className="w-16 h-16 rounded-full bg-success-soft text-success flex items-center justify-center mx-auto border-2 border-success/30 shadow-md">
+                <svg
+                  className="w-8 h-8 text-success"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M5 13l4 4L19 7"
+                    style={{
+                      strokeDasharray: 24,
+                      strokeDashoffset: 0,
+                      animation: 'dash 0.6s ease-in-out forwards',
+                    }}
+                  />
+                </svg>
+              </div>
+
+              <div className="space-y-1">
+                <h2 className="font-serif text-2xl font-bold tracking-tight text-foreground">
+                  {successData.isAlreadyRegistered
+                    ? 'Prezență Deja Confirmată'
+                    : 'Prezență Înregistrată!'}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Confirmarea ta a fost transmisă pe ecranul profesorului.
+                </p>
+              </div>
+
+              {/* Student Confirmation Card */}
+              <div className="p-4 rounded-card bg-muted/40 border border-border text-left space-y-2 text-xs font-mono">
+                <div className="flex justify-between border-b border-border pb-2">
+                  <span className="text-muted-foreground font-sans">Student:</span>
+                  <span className="font-semibold text-foreground font-sans">
+                    {successData.student.name}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-border pb-2">
+                  <span className="text-muted-foreground font-sans">Grupă:</span>
+                  <span className="font-semibold text-accent">
+                    {successData.student.group}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-border pb-2">
+                  <span className="text-muted-foreground font-sans">Email:</span>
+                  <span className="text-foreground">{successData.student.email}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground font-sans">Ora scanării:</span>
+                  <span className="text-success font-medium">
+                    {formatDate(successData.checkInTime)} {formatTime(successData.checkInTime)}
+                  </span>
+                </div>
+                {successData.distance != null && (
+                  <div className="flex justify-between pt-1">
+                    <span className="text-muted-foreground font-sans">Distanță sală:</span>
+                    <span className="text-accent">{successData.distance} metri</span>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Poți închide această pagină web în siguranță.
+              </p>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* ── Footer ─────────────────────────────────────────────────── */}
+      <div className="w-full max-w-[420px] mx-auto text-center text-[10px] font-mono text-muted-foreground pt-6 pb-2">
+        Sistem Universitar de Prezență · Universitatea Politehnica
       </div>
     </div>
   );

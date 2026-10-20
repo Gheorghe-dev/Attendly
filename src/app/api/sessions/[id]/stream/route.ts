@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { parseGroups } from '@/lib/groups';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
@@ -16,42 +19,72 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       async function sendUpdate() {
         try {
           const s = await prisma.session.findFirst({
-            where: { id: params.id, course: { professorId: session!.user!.id } },
+            where: {
+              id: params.id,
+              course: { professorId: session!.user!.id },
+            },
             include: {
+              course: true,
               attendance: {
-                include: { student: true },
                 where: { status: 'verified' },
+                include: { student: true },
+                orderBy: { verifiedAt: 'desc' },
               },
-              _count: { select: { attendance: true } },
             },
           });
+
           if (!s) return;
-          const sessionGroups = s.groups.split(',').map((g: string) => g.trim());
-          const enrolled = await prisma.student.count({
-            where: { courseId: s.courseId, group: { in: sessionGroups } },
-          });
-          const data = {
+
+          const targetGroups = parseGroups(s.groups);
+          const studentFilter: { courseId: string; group?: { in: string[] } } = {
+            courseId: s.courseId,
+          };
+          if (targetGroups.length > 0) {
+            studentFilter.group = { in: targetGroups };
+          }
+
+          const enrolled = await prisma.student.count({ where: studentFilter });
+          const present = s.attendance.length;
+          const absent = Math.max(0, enrolled - present);
+          const rate = enrolled > 0 ? Math.round((present / enrolled) * 100) : 0;
+
+          const payload = {
             status: s.status,
             enrolled,
-            verified: s.attendance.length,
-            recent: s.attendance.slice(0, 5).map((a) => ({
+            present,
+            absent,
+            rate,
+            records: s.attendance.map((a) => ({
+              id: a.id,
+              studentId: a.studentId,
               name: a.student.name,
               email: a.student.email,
               group: a.student.group,
-              verifiedAt: a.verifiedAt,
+              checkInTime: (a.verifiedAt || a.createdAt).toISOString(),
+              distance: a.distanceMeters,
             })),
           };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch {
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        } catch (err) {
+          console.error('[SSE stream error]', err);
           clearInterval(intervalId);
-          controller.close();
+          try {
+            controller.close();
+          } catch {}
         }
       }
+
+      // Initial push
       sendUpdate();
-      intervalId = setInterval(sendUpdate, 5000);
+      // Push every 2 seconds
+      intervalId = setInterval(sendUpdate, 2000);
+
       req.signal.addEventListener('abort', () => {
         clearInterval(intervalId);
-        controller.close();
+        try {
+          controller.close();
+        } catch {}
       });
     },
     cancel() {
@@ -62,7 +95,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
     },
   });

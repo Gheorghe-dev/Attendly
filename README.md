@@ -45,6 +45,7 @@ The application is **100% free and open-source**, runs locally on the professor'
 
 ## ✨ Key Features
 
+- **🏛 Modern Academic Elegance UI**: Sophisticated editorial aesthetic designed specifically for higher education. Rich typography (`Fraunces` serif headlines, `Inter` for data density, and `JetBrains Mono` for telemetry and codes), ivory paper background (`#FAF8F4`), deep navy ink (`#0F1B2D`), warm antique gold accents (`#B08D57`), full Dark Mode (`#0B1220`), WCAG 2.2 AA contrast compliance, and tabular numerals across all statistical counters.
 - **⚡ One-Click Desktop Launcher**: Launch the entire stack (Firewall unblocking, Node.js server, Cloudflare tunnel, and browser dashboard) via a single desktop shortcut.
 - **🌐 Scan from Anywhere (Zero Port Forwarding)**: Uses Cloudflare Quick Tunnels (`trycloudflare.com`) to allow instant scanning across different Wi-Fi networks and mobile data (4G/5G) with **no router configuration, no accounts, and no fees**.
 - **📍 Anti-Proxy GPS Geofencing**: Enforce physical classroom presence using GPS geolocation radius calculations (Haversine formula). Students outside the classroom cannot mark attendance.
@@ -130,7 +131,6 @@ NEXTAUTH_SECRET="change-this-to-a-secure-random-32-char-string"
 NEXTAUTH_URL="http://localhost:3000"
 AUTH_TRUST_HOST="true"
 APP_URL="http://localhost:3000"
-SETUP_KEY="setup-key-2024"
 ```
 
 ### 4. Database Setup & Seeding
@@ -246,7 +246,7 @@ To eliminate remote "proxy attendance" (students scanning QR screenshots sent by
 | Endpoint | Method | Auth | Description |
 |:---|:---:|:---:|:---|
 | `/api/auth/[...nextauth]` | `POST` | Public | NextAuth credentials sign-in & session handling |
-| `/api/auth/register` | `POST` | Secret Key | Register new professor account (`SETUP_KEY` required) |
+| `/api/auth/register` | `POST` | Public | Register new professor account on local instance |
 | `/api/courses` | `GET`, `POST` | Professor | List professor courses or create a new course |
 | `/api/courses/[id]` | `GET`, `PATCH`, `DELETE` | Professor | Retrieve, rename, or delete a course |
 | `/api/courses/[id]/students` | `GET`, `POST` | Professor | List enrolled students or upload `.xlsx` roster |

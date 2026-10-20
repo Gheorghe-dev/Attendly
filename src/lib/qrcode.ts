@@ -74,12 +74,28 @@ export function pickBaseUrl(forceOrigin?: string): string {
   return 'http://localhost:3000';
 }
 
+/**
+ * Generates high-resolution Base64 PNG data URL with pure black on pure white
+ * and a strict quiet zone margin of 4 modules.
+ */
 export async function generateQRCodeDataURL(url: string): Promise<string> {
   return QRCode.toDataURL(url, {
-    errorCorrectionLevel: 'H',
-    margin: 2,
-    width: 400,
-    color: { dark: '#1e3a5f', light: '#ffffff' },
+    errorCorrectionLevel: 'M',
+    margin: 4,
+    width: 640,
+    color: { dark: '#000000', light: '#ffffff' },
+  });
+}
+
+/**
+ * Generates crisp SVG string for high-DPI projection screens.
+ */
+export async function generateQRCodeSVG(url: string): Promise<string> {
+  return QRCode.toString(url, {
+    type: 'svg',
+    errorCorrectionLevel: 'M',
+    margin: 4,
+    color: { dark: '#000000', light: '#ffffff' },
   });
 }
 

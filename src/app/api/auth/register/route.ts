@@ -19,11 +19,17 @@ export async function POST(req: NextRequest) {
     const password = body.password ?? '';
     const name = body.name?.trim() ?? '';
 
-    if (!email || !password || !name) return bad('Missing fields');
-    if (password.length < 8) return bad('Password must be at least 8 characters.');
+    if (!email || !password || !name) {
+      return bad('Toate câmpurile (nume, email, parolă) sunt obligatorii.');
+    }
+    if (password.length < 8) {
+      return bad('Parola trebuie să aibă cel puțin 8 caractere.');
+    }
 
     const existing = await prisma.professor.findUnique({ where: { email } });
-    if (existing) return bad('Email already registered', 409);
+    if (existing) {
+      return bad('Există deja un cont înregistrat cu această adresă de email.', 409);
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
     const professor = await prisma.professor.create({
@@ -37,6 +43,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error(err);
-    return bad('Server error', 500);
+    return bad('Eroare internă de server.', 500);
   }
 }

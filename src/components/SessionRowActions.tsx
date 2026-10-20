@@ -1,6 +1,11 @@
 'use client';
-import { useState } from 'react';
+
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Trash2, AlertTriangle, X } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Card, CardTitle, CardDescription } from '@/components/ui/Card';
+import { toast } from 'sonner';
 
 interface Props {
   id: string;
@@ -13,54 +18,86 @@ export function SessionRowActions({ id, name }: Props) {
   const [deleting, setDeleting] = useState(false);
 
   async function doDelete() {
-    setConfirming(false);
     setDeleting(true);
     try {
       const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.error ?? 'Delete failed.');
+        toast.error(data.error ?? 'Ștergerea sesiunii a eșuat.');
         setDeleting(false);
+        setConfirming(false);
         return;
       }
+      toast.success(`Sesiunea "${name}" a fost ștearsă.`);
+      setConfirming(false);
       router.refresh();
     } catch {
-      alert('Network error.');
+      toast.error('Eroare de rețea.');
       setDeleting(false);
     }
   }
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setConfirming(true)}
         disabled={deleting}
-        className="btn-secondary text-sm py-1.5 px-3 text-red-600 border-red-200 hover:bg-red-50"
-        title="Permanently delete this session"
+        className="text-muted-foreground hover:text-danger hover:bg-danger-soft h-8 px-2"
+        title="Șterge definitiv această sesiune"
       >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-        {deleting ? 'Deleting…' : 'Delete'}
-      </button>
+        <Trash2 className="w-3.5 h-3.5" />
+      </Button>
 
       {confirming && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="card p-6 max-w-sm w-full">
-            <h3 className="font-bold text-gray-900 mb-2">Delete session?</h3>
-            <p className="text-sm text-gray-500 mb-6">
-              <strong>{name}</strong> and every attendance / verification record attached to it will be wiped. This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button type="button" onClick={doDelete} disabled={deleting} className="btn-danger flex-1 justify-center disabled:opacity-50">
-                {deleting ? 'Deleting…' : 'Yes, delete'}
-              </button>
-              <button type="button" onClick={() => setConfirming(false)} disabled={deleting} className="btn-secondary flex-1 justify-center">
-                Cancel
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <Card className="max-w-md w-full p-6 shadow-xl border-border space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-input bg-danger-soft text-danger flex items-center justify-center flex-shrink-0 border border-danger/20">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Ștergi această sesiune?</CardTitle>
+                  <CardDescription>
+                    Acțiune ireversibilă de eliminare a datelor.
+                  </CardDescription>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={deleting}
+                className="p-1 rounded-input text-muted-foreground hover:text-foreground hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
-          </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Sesiunea <strong className="text-foreground">{name}</strong> și toate prezențele înregistrate sau jurnalele de verificare asociate vor fi șterse definitiv.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirming(false)}
+                disabled={deleting}
+              >
+                Anulează
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={doDelete}
+                loading={deleting}
+              >
+                Confirmă Ștergerea
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </>

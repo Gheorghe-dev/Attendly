@@ -1,9 +1,31 @@
-// Geographic distance helpers. All functions return null on invalid inputs.
+// Geographic distance helpers. All functions return null or throw on invalid inputs.
 
-const EARTH_RADIUS_M = 6371000;
+export const EARTH_RADIUS_M = 6371e3;
 
 function toRadians(deg: number): number {
   return (deg * Math.PI) / 180;
+}
+
+/**
+ * Exact Haversine spherical distance between two coordinates in meters.
+ * From QR Attendance System Documentation (Section 4.1).
+ */
+export function calculateDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = EARTH_RADIUS_M;
+  const phi1 = toRadians(lat1);
+  const phi2 = toRadians(lat2);
+  const deltaPhi = toRadians(lat2 - lat1);
+  const deltaLambda = toRadians(lon2 - lon1);
+
+  const a =
+    Math.sin(deltaPhi / 2) ** 2 +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
@@ -25,19 +47,11 @@ export function haversineMeters(
   ) {
     return null;
   }
-  const dLat = toRadians(b.lat - a.lat);
-  const dLng = toRadians(b.lng - a.lng);
-  const lat1 = toRadians(a.lat);
-  const lat2 = toRadians(b.lat);
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  return Math.round(EARTH_RADIUS_M * c);
+  return Math.round(calculateDistance(a.lat, a.lng, b.lat, b.lng));
 }
 
 /**
- * Format a distance in meters for display:  "12 m"  /  "1.2 km"
+ * Format a distance in meters for display: "12 m" / "1.2 km"
  */
 export function formatDistance(meters: number | null | undefined): string {
   if (meters == null) return '—';

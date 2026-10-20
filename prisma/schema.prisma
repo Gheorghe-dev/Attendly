@@ -19,6 +19,7 @@ model Professor {
 model Course {
   id          String    @id @default(cuid())
   name        String
+  description String?
   professorId String
   professor   Professor @relation(fields: [professorId], references: [id], onDelete: Cascade)
   createdAt   DateTime  @default(now())
@@ -48,7 +49,7 @@ model Session {
   course          Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   name            String
   date            DateTime
-  groups          String                   // comma-separated groups, e.g. "Group A,Group B"
+  groups          String                   // comma-separated groups or JSON array, e.g. "AIA 3.3A,AIA 3.1 B"
   token           String                   @unique @default(cuid())
   status          String                   @default("open") // "open" | "closed"
   classroomLat    Float?
@@ -93,5 +94,7 @@ model UnrecognizedSubmission {
   sessionId   String
   session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   email       String
+  distance    Float?
+  reason      String   @default("NOT_IN_ROSTER")
   submittedAt DateTime @default(now())
 }

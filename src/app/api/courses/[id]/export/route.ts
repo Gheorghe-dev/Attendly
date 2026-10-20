@@ -19,11 +19,21 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const sessionsData = await Promise.all(
     course.sessions.map(async (s) => {
-      const sessionGroups = s.groups.split(',').map((g: string) => g.trim());
+      const sessionGroups = s.groups
+        ? s.groups
+            .split(',')
+            .map((g: string) => g.trim())
+            .filter(Boolean)
+        : [];
+
       const students = await prisma.student.findMany({
-        where: { courseId: course.id, group: { in: sessionGroups } },
+        where: {
+          courseId: course.id,
+          ...(sessionGroups.length > 0 ? { group: { in: sessionGroups } } : {}),
+        },
         orderBy: [{ group: 'asc' }, { name: 'asc' }],
       });
+
       const attendance = new Map<string, { verifiedAt: Date | null; status: string }>();
       for (const rec of s.attendance) {
         attendance.set(rec.student.email, { verifiedAt: rec.verifiedAt, status: rec.status });
