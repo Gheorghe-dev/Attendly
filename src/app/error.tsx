@@ -14,7 +14,6 @@ export default function ErrorBoundary({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log error to console for debugging
     console.error('Unhandled app error:', error);
   }, [error]);
 
@@ -27,17 +26,17 @@ export default function ErrorBoundary({
 
         <div className="space-y-2">
           <span className="font-mono text-xs uppercase tracking-widest text-danger font-semibold">
-            Eroare de Execuție
+            Execution Error
           </span>
           <h1 className="font-serif text-2xl font-bold tracking-tight text-foreground">
-            A apărut o problemă neașteptată
+            Something went wrong
           </h1>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Sistemul a întâmpinat o eroare internă la procesarea acestei cereri. Puteți încerca să reîncărcați componenta sau să reveniți la panoul principal.
+            The system encountered an unexpected error processing this request. You can try refreshing the component or return to the dashboard.
           </p>
           {error.digest && (
             <p className="text-[11px] font-mono text-muted-foreground pt-1">
-              Cod referință: <span className="text-foreground">{error.digest}</span>
+              Error reference: <span className="text-foreground">{error.digest}</span>
             </p>
           )}
         </div>
@@ -50,21 +49,17 @@ export default function ErrorBoundary({
             className="w-full sm:w-auto gap-2"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Reîncearcă</span>
+            <span>Try Again</span>
           </Button>
 
           <Link href="/dashboard" className="w-full sm:w-auto">
             <Button variant="outline" size="md" className="w-full gap-2">
               <Home className="w-4 h-4" />
-              <span>Panoul Principal</span>
+              <span>Dashboard</span>
             </Button>
           </Link>
         </div>
       </Card>
-
-      <footer className="mt-8 text-center text-xs font-mono text-muted-foreground">
-        QR Attendance System · Universitatea Tehnică
-      </footer>
     </div>
   );
 }

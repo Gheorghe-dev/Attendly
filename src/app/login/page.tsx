@@ -1,4 +1,5 @@
 import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import LoginForm from './LoginForm';
 
@@ -9,6 +10,11 @@ export default async function LoginPage() {
 
   if (session?.user) {
     redirect('/dashboard');
+  }
+
+  const count = await prisma.professor.count();
+  if (count === 0) {
+    redirect('/setup');
   }
 
   return <LoginForm />;

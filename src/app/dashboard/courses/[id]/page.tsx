@@ -21,7 +21,6 @@ import {
   PlusCircle,
   Search,
   Trash2,
-  MapPin,
   Calendar,
   Loader2,
   UserPlus,
@@ -42,9 +41,7 @@ interface SessionItem {
   date: string;
   status: string;
   groups: string;
-  classroomLat?: number | null;
-  classroomLng?: number | null;
-  classroomRadius?: number | null;
+  classroom?: string | null;
   presentCount?: number;
   enrolledCount?: number;
 }
@@ -53,6 +50,7 @@ interface CourseData {
   id: string;
   name: string;
   description?: string | null;
+  extraGroups?: string;
   students: Student[];
   sessions: SessionItem[];
 }
@@ -98,15 +96,36 @@ export default function CourseDetailPage() {
     loadCourse();
   }, [loadCourse]);
 
-  // Distinct groups from students
+  // Distinct groups from students and extra groups
   const allGroups = useMemo(() => {
     if (!course?.students) return [];
     const set = new Set<string>();
     course.students.forEach((s) => {
       if (s.group) set.add(s.group.trim());
     });
+    if (course.extraGroups) {
+      course.extraGroups.split(',').forEach((g) => {
+        if (g.trim()) set.add(g.trim());
+      });
+    }
     return Array.from(set).sort();
   }, [course]);
+
+  // Aggregate attendance metrics for reports tab
+  const totalVerifiedInCourse = useMemo(() => {
+    if (!course?.sessions) return 0;
+    return course.sessions.reduce((acc, s) => acc + (s.presentCount || 0), 0);
+  }, [course]);
+
+  const totalPossibleInCourse = useMemo(() => {
+    if (!course?.sessions || !course?.students) return 0;
+    return course.sessions.length * course.students.length;
+  }, [course]);
+
+  const courseAttendanceRate = useMemo(() => {
+    if (totalPossibleInCourse === 0) return 0;
+    return Math.min(100, Math.round((totalVerifiedInCourse / totalPossibleInCourse) * 100));
+  }, [totalVerifiedInCourse, totalPossibleInCourse]);
 
   // Filtered students
   const filteredStudents = useMemo(() => {
@@ -127,7 +146,7 @@ export default function CourseDetailPage() {
   }, [course, search, selectedGroups]);
 
   async function handleDeleteStudent(studentId: string, studentName: string) {
-    if (!confirm(`Ești sigur că vrei să elimini studentul "${studentName}" din catalog?`)) {
+    if (!confirm(`Are you sure you want to remove student "${studentName}" from the roster?`)) {
       return;
     }
 
@@ -136,13 +155,13 @@ export default function CourseDetailPage() {
         method: 'DELETE',
       });
       if (res.ok) {
-        toast.success(`Studentul ${studentName} a fost eliminat.`);
+        toast.success(`Student ${studentName} was removed.`);
         loadCourse();
       } else {
-        toast.error('Nu s-a putut elimina studentul.');
+        toast.error('Failed to remove student.');
       }
     } catch {
-      toast.error('Eroare de rețea.');
+      toast.error('Network error.');
     }
   }
 
@@ -157,10 +176,10 @@ export default function CourseDetailPage() {
   if (!course) {
     return (
       <EmptyState
-        title="Cursul nu a fost găsit"
-        description="Cursul solicitat nu există sau nu ai permisiunea de a-l vizualiza."
+        title="Course not found"
+        description="The requested course does not exist or you do not have permission to view it."
         action={{
-          label: 'Înapoi la cursuri',
+          label: 'Back to courses',
           onClick: () => router.push('/dashboard/courses'),
           variant: 'outline',
         }}
@@ -173,13 +192,13 @@ export default function CourseDetailPage() {
       {/* ── Page Header ────────────────────────────────────────────── */}
       <PageHeader
         breadcrumbs={[
-          { label: 'Cursuri', href: '/dashboard/courses' },
+          { label: 'Courses', href: '/dashboard/courses' },
           { label: course.name },
         ]}
         title={course.name}
         description={
           course.description ||
-          'Catalog oficial al disciplinei, catalog de studenți și istoric sesiuni.'
+          'Official course syllabus, student roster, and session history.'
         }
         action={
           <div className="flex flex-wrap items-center gap-2.5">
@@ -189,20 +208,20 @@ export default function CourseDetailPage() {
               onClick={() => setImportOpen(true)}
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-accent" />
-              <span>Importă Excel</span>
+              <span>Import Excel</span>
             </Button>
 
             <a href={`/api/courses/${id}/export`}>
               <Button variant="outline" size="sm">
                 <Download className="w-3.5 h-3.5 text-success" />
-                <span>Exportă Catalog (.xlsx)</span>
+                <span>Export Attendance (.xlsx)</span>
               </Button>
             </a>
 
             <Link href={`/dashboard/courses/${id}/sessions/new`}>
               <Button variant="accent" size="sm">
                 <PlusCircle className="w-3.5 h-3.5" />
-                <span>Sesiune nouă</span>
+                <span>New Session</span>
               </Button>
             </Link>
           </div>
@@ -221,7 +240,7 @@ export default function CourseDetailPage() {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Studenți Înscriși ({course.students.length})</span>
+          <span>Enrolled Students ({course.students.length})</span>
           {activeTab === 'students' && (
             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
           )}
@@ -237,7 +256,7 @@ export default function CourseDetailPage() {
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Sesiuni ({course.sessions.length})</span>
+          <span>Sessions ({course.sessions.length})</span>
           {activeTab === 'sessions' && (
             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
           )}
@@ -253,7 +272,7 @@ export default function CourseDetailPage() {
           }`}
         >
           <FileSpreadsheet className="w-4 h-4" />
-          <span>Rapoarte &amp; Statistici</span>
+          <span>Reports &amp; Analytics</span>
           {activeTab === 'reports' && (
             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
           )}
@@ -270,7 +289,7 @@ export default function CourseDetailPage() {
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Caută student după nume sau email…"
+                  placeholder="Search student by name or email…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="flex min-h-[40px] w-full rounded-input border border-input bg-card pl-9 pr-3.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:outline-none transition-all"
@@ -281,7 +300,7 @@ export default function CourseDetailPage() {
               {allGroups.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[11px] font-mono text-muted-foreground mr-1">
-                    Grupe:
+                    Groups:
                   </span>
                   {allGroups.map((g) => {
                     const isSelected = selectedGroups.includes(g);
@@ -312,7 +331,7 @@ export default function CourseDetailPage() {
                       onClick={() => setSelectedGroups([])}
                       className="text-[10px] font-mono text-accent hover:underline ml-1"
                     >
-                      Resetează
+                      Reset
                     </button>
                   )}
                 </div>
@@ -321,7 +340,7 @@ export default function CourseDetailPage() {
 
             <div className="flex items-center justify-between sm:justify-end gap-3 text-xs">
               <span className="font-mono text-muted-foreground">
-                {filteredStudents.length} din {course.students.length} studenți
+                {filteredStudents.length} of {course.students.length} students
               </span>
               <Button
                 variant="outline"
@@ -329,7 +348,7 @@ export default function CourseDetailPage() {
                 onClick={() => setAddStudentOpen(true)}
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>Adaugă Student</span>
+                <span>Add Student</span>
               </Button>
             </div>
           </div>
@@ -338,10 +357,10 @@ export default function CourseDetailPage() {
           {course.students.length === 0 ? (
             <EmptyState
               icon={<Users className="w-6 h-6 text-accent" />}
-              title="Catalogul este gol"
-              description="Încarcă lista oficială a studenților folosind un fișier Excel (.xlsx) sau adaugă studenții individual."
+              title="Roster is empty"
+              description="Upload the official student roster using an Excel file (.xlsx) or add students individually."
               action={{
-                label: 'Importă Catalog Excel',
+                label: 'Import Excel Roster',
                 onClick: () => setImportOpen(true),
                 variant: 'accent',
               }}
@@ -357,16 +376,13 @@ export default function CourseDetailPage() {
                         Student
                       </th>
                       <th scope="col" className="px-5 py-3 font-mono text-[11px] uppercase tracking-wider">
-                        Email Instituțional
+                        Institutional Email
                       </th>
                       <th scope="col" className="px-5 py-3 font-mono text-[11px] uppercase tracking-wider">
-                        Grupă
+                        Group
                       </th>
                       <th scope="col" className="px-5 py-3 font-mono text-[11px] uppercase tracking-wider text-right">
-                        Rată Prezență
-                      </th>
-                      <th scope="col" className="px-5 py-3 font-mono text-[11px] uppercase tracking-wider text-right">
-                        Acțiuni
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -393,18 +409,12 @@ export default function CourseDetailPage() {
                           <GroupBadge group={s.group} />
                         </td>
 
-                        <td className="px-5 py-2.5 text-right font-mono tabular-nums">
-                          <span className="font-medium text-foreground">
-                            {s.attendanceRate != null ? `${s.attendanceRate}%` : '85%'}
-                          </span>
-                        </td>
-
                         <td className="px-5 py-2.5 text-right">
                           <button
                             type="button"
                             onClick={() => handleDeleteStudent(s.id, s.name)}
                             className="p-1.5 rounded-input text-muted-foreground hover:text-danger hover:bg-danger-soft transition-colors"
-                            title="Elimină student din curs"
+                            title="Remove student from course"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -438,9 +448,6 @@ export default function CourseDetailPage() {
 
                     <div className="flex items-center justify-between pt-1">
                       <GroupBadge group={s.group} />
-                      <span className="font-mono text-xs text-foreground font-medium tabular-nums">
-                        Prezență: 85%
-                      </span>
                     </div>
                   </div>
                 ))}
@@ -456,17 +463,17 @@ export default function CourseDetailPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-serif text-lg font-semibold text-foreground">
-                Istoric Sesiuni de Curs &amp; Laborator
+                Course &amp; Lab Session History
               </h3>
               <p className="text-xs text-muted-foreground">
-                Fă clic pe o sesiune pentru a vizualiza monitorul live sau a exporta prezența.
+                Click on a session to view the live monitor or export attendance.
               </p>
             </div>
 
             <Link href={`/dashboard/courses/${id}/sessions/new`}>
               <Button variant="accent" size="sm">
                 <PlusCircle className="w-3.5 h-3.5" />
-                <span>Lansează Sesiune</span>
+                <span>Launch Session</span>
               </Button>
             </Link>
           </div>
@@ -474,24 +481,23 @@ export default function CourseDetailPage() {
           {course.sessions.length === 0 ? (
             <EmptyState
               icon={<Layers className="w-6 h-6 text-accent" />}
-              title="Nicio sesiune înregistrată"
-              description="Lansează prima sesiune de prezență pentru a genera codul QR de amfiteatru."
+              title="No sessions recorded"
+              description="Launch your first attendance session to generate a classroom QR code."
               action={{
-                label: 'Creează prima sesiune',
+                label: 'Create first session',
                 onClick: () => router.push(`/dashboard/courses/${id}/sessions/new`),
                 variant: 'accent',
               }}
             />
           ) : (
-            <div className="rounded-card border border-border bg-card overflow-hidden shadow-xs">
-              <table className="w-full text-xs text-left">
+            <div className="rounded-card border border-border bg-card overflow-x-auto shadow-xs">
+              <table className="w-full min-w-[650px] text-xs text-left">
                 <thead className="bg-muted text-muted-foreground font-medium border-b border-border">
                   <tr className="h-12 font-mono text-[11px] uppercase tracking-wider">
-                    <th scope="col" className="px-5 py-3">Data &amp; Nume Sesiune</th>
-                    <th scope="col" className="px-5 py-3">Grupe Țintă</th>
-                    <th scope="col" className="px-5 py-3">Geofence GPS</th>
-                    <th scope="col" className="px-5 py-3 text-right">Prezenți</th>
-                    <th scope="col" className="px-5 py-3 text-right">Stare</th>
+                    <th scope="col" className="px-5 py-3 whitespace-nowrap">Date &amp; Session Name</th>
+                    <th scope="col" className="px-5 py-3 whitespace-nowrap">Target Groups</th>
+                    <th scope="col" className="px-5 py-3 text-right whitespace-nowrap">Present</th>
+                    <th scope="col" className="px-5 py-3 text-right whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -510,10 +516,17 @@ export default function CourseDetailPage() {
                             <span className="font-semibold text-foreground block">
                               {sess.name}
                             </span>
-                            <span className="font-mono text-[11px] text-muted-foreground flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-accent" />
-                              {formatDate(sess.date)} {formatTime(sess.date)}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="font-mono text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-accent" />
+                                {formatDate(sess.date)} {formatTime(sess.date)}
+                              </span>
+                              {sess.classroom && (
+                                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-accent/10 text-accent border border-accent/20 font-medium">
+                                  📍 {sess.classroom}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
 
@@ -526,24 +539,13 @@ export default function CourseDetailPage() {
                             </div>
                           ) : (
                             <span className="text-muted-foreground italic text-[11px]">
-                              Toate grupele
+                              All groups
                             </span>
                           )}
                         </td>
 
-                        <td className="px-5 py-3">
-                          {sess.classroomLat != null ? (
-                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-accent">
-                              <MapPin className="w-3.5 h-3.5" />
-                              <span>{sess.classroomRadius || 50}m perimetru</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-[11px]">Fără GPS</span>
-                          )}
-                        </td>
-
                         <td className="px-5 py-3 text-right font-mono font-medium text-foreground tabular-nums">
-                          {sess.presentCount || 0} prezenți
+                          {sess.presentCount || 0} present
                         </td>
 
                         <td className="px-5 py-3 text-right">
@@ -565,17 +567,17 @@ export default function CourseDetailPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-serif text-lg font-semibold text-foreground">
-                Rapoarte de Prezență &amp; Exporturi Oficiale
+                Attendance Reports &amp; Official Exports
               </h3>
               <p className="text-xs text-muted-foreground">
-                Generează sinteza completă a semestrului sau descarcă fișe individuale pe sesiune.
+                Generate full semester summary or download individual session attendance sheets.
               </p>
             </div>
 
             <a href={`/api/courses/${id}/export`}>
               <Button variant="accent" size="sm">
                 <Download className="w-3.5 h-3.5" />
-                <span>Descarcă Excel Curs Complet</span>
+                <span>Download Full Course Excel</span>
               </Button>
             </a>
           </div>
@@ -584,40 +586,40 @@ export default function CourseDetailPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Card className="p-5 space-y-1">
               <span className="text-[11px] font-mono text-muted-foreground uppercase">
-                Total Sesiuni
+                Total Sessions
               </span>
               <p className="font-serif text-3xl font-semibold text-foreground tabular-nums">
                 {course.sessions.length}
               </p>
-              <p className="text-[11px] text-muted-foreground">Înregistrate în sistem</p>
+              <p className="text-[11px] text-muted-foreground">Recorded in system</p>
             </Card>
 
             <Card className="p-5 space-y-1">
               <span className="text-[11px] font-mono text-muted-foreground uppercase">
-                Total Studenți
+                Total Students
               </span>
               <p className="font-serif text-3xl font-semibold text-foreground tabular-nums">
                 {course.students.length}
               </p>
-              <p className="text-[11px] text-muted-foreground">Înscriși în catalog</p>
+              <p className="text-[11px] text-muted-foreground">Enrolled in roster</p>
             </Card>
 
             <Card className="p-5 space-y-1">
               <span className="text-[11px] font-mono text-muted-foreground uppercase">
-                Rată Medie Prezență
+                Avg. Attendance Rate
               </span>
               <p className="font-serif text-3xl font-semibold text-success tabular-nums">
-                86%
+                {course.sessions.length > 0 && course.students.length > 0 ? `${courseAttendanceRate}%` : '—'}
               </p>
-              <p className="text-[11px] text-muted-foreground">Medie pe toate sesiunile</p>
+              <p className="text-[11px] text-muted-foreground">Across all sessions</p>
             </Card>
           </div>
 
           {/* Per-session Excel Downloads List */}
           <Card className="p-6 space-y-4">
-            <CardTitle>Fișe de Prezență Individuale pe Sesiune</CardTitle>
+            <CardTitle>Individual Session Attendance Sheets</CardTitle>
             <CardDescription>
-              Fiecare fișier conține lista completă a studenților: prezenți colorați în verde, absenți în roșu, oră exactă de scanare și distanță GPS.
+              Each file contains the full student roster: present colored in green, absent in red, and exact scan timestamp.
             </CardDescription>
 
             <div className="divide-y divide-border border-t border-border mt-3">
@@ -626,7 +628,7 @@ export default function CourseDetailPage() {
                   <div className="space-y-0.5">
                     <p className="font-semibold text-foreground text-xs">{s.name}</p>
                     <p className="font-mono text-[11px] text-muted-foreground">
-                      {formatDate(s.date)} · {s.presentCount || 0} prezenți
+                      {formatDate(s.date)} · {s.presentCount || 0} present
                     </p>
                   </div>
 

@@ -23,16 +23,16 @@ export function SessionRowActions({ id, name }: Props) {
       const res = await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error ?? 'Ștergerea sesiunii a eșuat.');
+        toast.error(data.error ?? 'Failed to delete session.');
         setDeleting(false);
         setConfirming(false);
         return;
       }
-      toast.success(`Sesiunea "${name}" a fost ștearsă.`);
+      toast.success(`Session "${name}" was deleted.`);
       setConfirming(false);
       router.refresh();
     } catch {
-      toast.error('Eroare de rețea.');
+      toast.error('Network error.');
       setDeleting(false);
     }
   }
@@ -45,7 +45,7 @@ export function SessionRowActions({ id, name }: Props) {
         onClick={() => setConfirming(true)}
         disabled={deleting}
         className="text-muted-foreground hover:text-danger hover:bg-danger-soft h-8 px-2"
-        title="Șterge definitiv această sesiune"
+        title="Permanently delete this session"
       >
         <Trash2 className="w-3.5 h-3.5" />
       </Button>
@@ -59,9 +59,9 @@ export function SessionRowActions({ id, name }: Props) {
                   <AlertTriangle className="w-5 h-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">Ștergi această sesiune?</CardTitle>
+                  <CardTitle className="text-base">Delete this session?</CardTitle>
                   <CardDescription>
-                    Acțiune ireversibilă de eliminare a datelor.
+                    This action cannot be undone.
                   </CardDescription>
                 </div>
               </div>
@@ -76,7 +76,7 @@ export function SessionRowActions({ id, name }: Props) {
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Sesiunea <strong className="text-foreground">{name}</strong> și toate prezențele înregistrate sau jurnalele de verificare asociate vor fi șterse definitiv.
+              Session <strong className="text-foreground">{name}</strong> and all recorded attendances or verification logs will be permanently deleted.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
@@ -86,7 +86,7 @@ export function SessionRowActions({ id, name }: Props) {
                 onClick={() => setConfirming(false)}
                 disabled={deleting}
               >
-                Anulează
+                Cancel
               </Button>
               <Button
                 variant="destructive"
@@ -94,7 +94,7 @@ export function SessionRowActions({ id, name }: Props) {
                 onClick={doDelete}
                 loading={deleting}
               >
-                Confirmă Ștergerea
+                Confirm Delete
               </Button>
             </div>
           </Card>

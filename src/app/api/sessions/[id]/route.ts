@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { parseGroups } from '@/lib/groups';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
@@ -17,9 +18,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     },
   });
   if (!s) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const sessionGroups = s.groups.split(',').map((g: string) => g.trim());
+  const sessionGroups = parseGroups(s.groups);
   const enrolledStudents = await prisma.student.findMany({
-    where: { courseId: s.courseId, group: { in: sessionGroups } },
+    where: {
+      courseId: s.courseId,
+      ...(sessionGroups.length > 0 ? { group: { in: sessionGroups } } : {}),
+    },
     orderBy: [{ group: 'asc' }, { name: 'asc' }],
   });
   return NextResponse.json({ ...s, enrolledStudents });
@@ -32,10 +36,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     where: { id: params.id, course: { professorId: session.user.id } },
   });
   if (!s) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+
+  const dataToUpdate: Record<string, unknown> = {};
+  if (typeof body.status === 'string') dataToUpdate.status = body.status;
+  if (typeof body.name === 'string' && body.name.trim()) dataToUpdate.name = body.name.trim();
+  if (typeof body.hostLat === 'number') dataToUpdate.hostLat = body.hostLat;
+  if (typeof body.hostLng === 'number') dataToUpdate.hostLng = body.hostLng;
+  if (typeof body.hostCity === 'string') dataToUpdate.hostCity = body.hostCity.trim();
+
   const updated = await prisma.session.update({
     where: { id: params.id },
-    data: { status: body.status },
+    data: dataToUpdate,
   });
   return NextResponse.json(updated);
 }

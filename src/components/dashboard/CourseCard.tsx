@@ -42,7 +42,7 @@ export function CourseCard({
   async function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
-    if (!confirm(`Ești sigur că vrei să ștergi cursul "${name}"? Toți studenții și sesiunile asociate vor fi șterse.`)) {
+    if (!confirm(`Are you sure you want to delete the course "${name}"? All associated students and sessions will be deleted.`)) {
       return;
     }
 
@@ -50,13 +50,13 @@ export function CourseCard({
     try {
       const res = await fetch(`/api/courses/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success(`Cursul "${name}" a fost șters.`);
+        toast.success(`Course "${name}" was deleted.`);
         router.refresh();
       } else {
-        toast.error('Nu s-a putut șterge cursul.');
+        toast.error('Failed to delete course.');
       }
     } catch {
-      toast.error('Eroare de rețea.');
+      toast.error('Network error.');
     } finally {
       setDeleting(false);
     }
@@ -80,7 +80,7 @@ export function CourseCard({
               </p>
             ) : (
               <p className="text-xs text-muted-foreground italic">
-                Fără descriere adițională
+                No description provided
               </p>
             )}
           </div>
@@ -93,7 +93,7 @@ export function CourseCard({
                 setMenuOpen(!menuOpen);
               }}
               className="p-1 rounded-input text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              aria-label="Opțiuni curs"
+              aria-label="Course options"
             >
               <MoreVertical className="w-4 h-4" />
             </button>
@@ -109,7 +109,7 @@ export function CourseCard({
                   onClick={() => setMenuOpen(false)}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Deschide curs</span>
+                  <span>Open course</span>
                 </Link>
 
                 <a
@@ -118,7 +118,7 @@ export function CourseCard({
                   onClick={() => setMenuOpen(false)}
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-success" />
-                  <span>Exportă catalog (.xlsx)</span>
+                  <span>Export roster (.xlsx)</span>
                 </a>
 
                 <div className="h-[1px] bg-border my-1" />
@@ -130,7 +130,7 @@ export function CourseCard({
                   className="w-full flex items-center gap-2 px-3 py-2 text-danger hover:bg-danger-soft transition-colors text-left"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Șterge cursul</span>
+                  <span>Delete course</span>
                 </button>
               </div>
             )}
@@ -142,13 +142,13 @@ export function CourseCard({
           <div className="flex items-center gap-2 p-2 rounded-input bg-muted/40 border border-border/40">
             <Users className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-foreground font-semibold tabular-nums">{studentCount}</span>
-            <span className="text-muted-foreground text-[10px]">studenți</span>
+            <span className="text-muted-foreground text-[10px]">students</span>
           </div>
 
           <div className="flex items-center gap-2 p-2 rounded-input bg-muted/40 border border-border/40">
             <Layers className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-foreground font-semibold tabular-nums">{sessionCount}</span>
-            <span className="text-muted-foreground text-[10px]">sesiuni</span>
+            <span className="text-muted-foreground text-[10px]">sessions</span>
           </div>
         </div>
       </div>
@@ -159,11 +159,11 @@ export function CourseCard({
           <div className="flex items-center gap-1.5 font-mono">
             <Calendar className="w-3 h-3 text-accent" />
             <span>
-              {lastSessionDate ? `Ultima: ${formatDate(lastSessionDate)}` : 'Nicio sesiune încă'}
+              {lastSessionDate ? `Last: ${formatDate(lastSessionDate)}` : 'No sessions yet'}
             </span>
           </div>
           <span className="font-mono font-medium text-foreground tabular-nums">
-            {attendanceRate}% prezență
+            {attendanceRate}% attendance
           </span>
         </div>
 

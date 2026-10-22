@@ -62,6 +62,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
               group: a.student.group,
               checkInTime: (a.verifiedAt || a.createdAt).toISOString(),
               distance: a.distanceMeters,
+              city: a.studentCity,
             })),
           };
 

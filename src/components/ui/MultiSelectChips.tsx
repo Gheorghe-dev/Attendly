@@ -55,7 +55,7 @@ export function MultiSelectChips({
             onClick={handleSelectAll}
             className="text-[11px] font-mono text-accent hover:underline cursor-pointer"
           >
-            {isAllSelected ? 'Deselectează tot' : 'Selectează tot'}
+            {isAllSelected ? 'Deselect all' : 'Select all'}
           </button>
         )}
       </div>

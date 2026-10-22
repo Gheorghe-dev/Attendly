@@ -38,8 +38,8 @@ export function CoursesClientView({ initialCourses }: CoursesClientViewProps) {
     return (
       <EmptyState
         icon={<BookOpen className="w-6 h-6" />}
-        title="Niciun curs configurat"
-        description="Creați primul curs pentru a putea importa cataloagele de studenți din Excel și a lansa sesiuni de prezență prin cod QR."
+        title="No courses configured"
+        description="Create your first course to import student rosters from Excel and launch QR attendance sessions."
         action={<CreateCourseDialog />}
       />
     );
@@ -52,7 +52,7 @@ export function CoursesClientView({ initialCourses }: CoursesClientViewProps) {
         {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Input
-            placeholder="Căutare după numele disciplinei..."
+            placeholder="Search by course title..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 pr-9"
@@ -76,7 +76,7 @@ export function CoursesClientView({ initialCourses }: CoursesClientViewProps) {
             <span className="font-semibold text-foreground tabular-nums">
               {initialCourses.length}
             </span>
-            <span>discipline</span>
+            <span>courses</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-input bg-card border border-border">
@@ -84,7 +84,7 @@ export function CoursesClientView({ initialCourses }: CoursesClientViewProps) {
             <span className="font-semibold text-foreground tabular-nums">
               {totalStudents}
             </span>
-            <span>studenți total</span>
+            <span>total students</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-input bg-card border border-border">
@@ -92,7 +92,7 @@ export function CoursesClientView({ initialCourses }: CoursesClientViewProps) {
             <span className="font-semibold text-foreground tabular-nums">
               {totalSessions}
             </span>
-            <span>sesiuni susținute</span>
+            <span>sessions conducted</span>
           </div>
         </div>
       </div>
@@ -102,10 +102,10 @@ export function CoursesClientView({ initialCourses }: CoursesClientViewProps) {
         <div className="text-center py-12 px-4 rounded-card border border-dashed border-border bg-card/40">
           <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
           <p className="font-serif text-base font-semibold text-foreground">
-            Nu a fost găsit niciun curs
+            No courses found
           </p>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-            Niciun curs nu corespunde căutării &ldquo;{search}&rdquo;. Încercați alți termeni sau ștergeți filtrul.
+            No courses match your search &ldquo;{search}&rdquo;. Try different keywords or clear the filter.
           </p>
         </div>
       ) : (

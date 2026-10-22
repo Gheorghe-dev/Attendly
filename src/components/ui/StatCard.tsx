@@ -42,7 +42,7 @@ export function StatCard({
       .join(' ');
 
     return (
-      <div className="flex items-center" title="Tendință ultimele sesiuni">
+      <div className="flex items-center" title="Recent sessions trend">
         <svg width={width} height={height} className="overflow-visible">
           <polyline
             fill="none"

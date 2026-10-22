@@ -8,6 +8,13 @@ export function getTunnelUrl(): string | null {
   try {
     const p = path.join(process.cwd(), '.tunnel_url');
     if (fs.existsSync(p)) {
+      const stat = fs.statSync(p);
+      // Cloudflare tunnels expire in 24 hours. If older than 12 hours, ignore and delete.
+      const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
+      if (ageHours > 12) {
+        try { fs.unlinkSync(p); } catch {}
+        return null;
+      }
       const content = fs.readFileSync(p, 'utf-8').trim();
       if (content && content.startsWith('http')) return content;
     }

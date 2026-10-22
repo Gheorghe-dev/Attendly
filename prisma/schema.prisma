@@ -50,11 +50,12 @@ model Session {
   name            String
   date            DateTime
   groups          String                   // comma-separated groups or JSON array, e.g. "AIA 3.3A,AIA 3.1 B"
+  classroom       String?                  @default("sala-101")
   token           String                   @unique @default(cuid())
   status          String                   @default("open") // "open" | "closed"
-  classroomLat    Float?
-  classroomLng    Float?
-  classroomRadius Int                      @default(50) // meters
+  hostLat         Float?
+  hostLng         Float?
+  hostCity        String?
   createdAt       DateTime                 @default(now())
   attendance      AttendanceRecord[]
   verTokens       VerificationToken[]
@@ -62,18 +63,20 @@ model Session {
 }
 
 model AttendanceRecord {
-  id              String    @id @default(cuid())
-  sessionId       String
-  session         Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  studentId       String
-  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  verifiedAt      DateTime?
-  status          String    @default("pending") // "pending" | "verified"
-  studentLat      Float?
-  studentLng      Float?
-  studentAccuracy Float?
-  distanceMeters  Float?    // computed at verify time using Haversine
-  createdAt       DateTime  @default(now())
+  id                String    @id @default(cuid())
+  sessionId         String
+  session           Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  verifiedAt        DateTime?
+  status            String    @default("pending") // "pending" | "verified"
+  studentLat        Float?
+  studentLng        Float?
+  distanceMeters    Float?
+  studentCity       String?
+  deviceId          String?   // unique persistent device identifier
+  deviceFingerprint String?   // hardware/browser canvas/WebGL fingerprint
+  createdAt         DateTime  @default(now())
 
   @@unique([sessionId, studentId])
 }
@@ -90,11 +93,13 @@ model VerificationToken {
 }
 
 model UnrecognizedSubmission {
-  id          String   @id @default(cuid())
-  sessionId   String
-  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  email       String
-  distance    Float?
-  reason      String   @default("NOT_IN_ROSTER")
-  submittedAt DateTime @default(now())
+  id                String   @id @default(cuid())
+  sessionId         String
+  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  email             String
+  distanceMeters    Float?
+  deviceId          String?
+  deviceFingerprint String?
+  reason            String   @default("NOT_IN_ROSTER")
+  submittedAt       DateTime @default(now())
 }

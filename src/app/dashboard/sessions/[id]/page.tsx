@@ -22,8 +22,12 @@ import {
   Maximize2,
   WifiOff,
   Loader2,
+  ShieldCheck,
+  AlertTriangle,
+  MapPin,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatDistance, getDistanceCategory } from '@/lib/distance';
 
 interface RosterStudent {
   id: string;
@@ -31,8 +35,9 @@ interface RosterStudent {
   email: string;
   group: string;
   checkInTime?: string | null;
-  distance?: number | null;
   isPresent: boolean;
+  distance?: number | null;
+  city?: string | null;
 }
 
 interface SessionData {
@@ -41,9 +46,11 @@ interface SessionData {
   date: string;
   status: string; // 'open' | 'closed'
   groups: string;
-  classroomLat?: number | null;
-  classroomLng?: number | null;
-  classroomRadius?: number | null;
+  classroom?: string | null;
+  token?: string;
+  hostLat?: number | null;
+  hostLng?: number | null;
+  hostCity?: string | null;
   course: {
     id: string;
     name: string;
@@ -65,6 +72,13 @@ interface SessionData {
     };
     verifiedAt: string;
     distanceMeters?: number | null;
+    studentCity?: string | null;
+  }>;
+  unrecognized?: Array<{
+    id: string;
+    email: string;
+    reason: string;
+    submittedAt: string;
   }>;
 }
 
@@ -83,13 +97,14 @@ export default function LiveSessionMonitorPage() {
   // Announcer text for screen readers (aria-live="polite")
   const [ariaAnnouncement, setAriaAnnouncement] = useState('');
 
-  // Set of recently added student IDs to flash gold highlight for 1.2s
+  // Set of recently added student IDs to flash highlight
   const [recentCheckedInIds, setRecentCheckedInIds] = useState<Set<string>>(new Set<string>());
 
   // Filter toolbar
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('');
-  const [viewFilter, setViewFilter] = useState<'all' | 'present' | 'absent'>('all');
+  const [viewFilter, setViewFilter] = useState<'all' | 'present' | 'absent' | 'remote'>('all');
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // QR data
   const [qrData, setQrData] = useState<{
@@ -122,6 +137,29 @@ export default function LiveSessionMonitorPage() {
     loadInitialData();
   }, [loadInitialData]);
 
+  // Silently refine host location from professor's browser if available
+  useEffect(() => {
+    if (typeof window === 'undefined' || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await fetch(`/api/sessions/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hostLat: pos.coords.latitude,
+              hostLng: pos.coords.longitude,
+            }),
+          });
+        } catch {
+          // Silent fallback
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+    );
+  }, [id]);
+
   // Connect to SSE stream
   useEffect(() => {
     let eventSource: EventSource | null = null;
@@ -149,8 +187,12 @@ export default function LiveSessionMonitorPage() {
 
               if (newlyAdded.length > 0) {
                 const firstNew = newlyAdded[0];
-                setAriaAnnouncement(`${firstNew.name} a confirmat prezența.`);
-                toast.success(`${firstNew.name} (${firstNew.group}) s-a înregistrat.`);
+                const distInfo =
+                  firstNew.distance != null
+                    ? ` (${formatDistance(firstNew.distance)})`
+                    : '';
+                setAriaAnnouncement(`${firstNew.name} confirmed attendance${distInfo}.`);
+                toast.success(`${firstNew.name} (${firstNew.group}) checked in${distInfo}.`);
 
                 // Add to highlight set and remove after 1200ms
                 const newIds: string[] = newlyAdded.map((r: { studentId: string }) => r.studentId);
@@ -167,7 +209,16 @@ export default function LiveSessionMonitorPage() {
               return {
                 ...prev,
                 status: data.status,
-                attendance: data.records.map((r: { id: string; studentId: string; name: string; email: string; group: string; checkInTime: string; distance: number | null }) => ({
+                attendance: data.records.map((r: {
+                  id: string;
+                  studentId: string;
+                  name: string;
+                  email: string;
+                  group: string;
+                  checkInTime: string;
+                  distance?: number | null;
+                  city?: string | null;
+                }) => ({
                   id: r.id,
                   studentId: r.studentId,
                   student: {
@@ -178,6 +229,7 @@ export default function LiveSessionMonitorPage() {
                   },
                   verifiedAt: r.checkInTime,
                   distanceMeters: r.distance,
+                  studentCity: r.city,
                 })),
               };
             });
@@ -213,11 +265,15 @@ export default function LiveSessionMonitorPage() {
   const roster = useMemo<RosterStudent[]>(() => {
     if (!session) return [];
 
-    const presentMap = new Map<string, { time: string; distance?: number | null }>();
+    const presentMap = new Map<
+      string,
+      { time: string; distance?: number | null; city?: string | null }
+    >();
     session.attendance.forEach((a) => {
       presentMap.set(a.studentId, {
         time: a.verifiedAt,
         distance: a.distanceMeters,
+        city: a.studentCity,
       });
     });
 
@@ -230,7 +286,8 @@ export default function LiveSessionMonitorPage() {
         group: s.group,
         isPresent: Boolean(pres),
         checkInTime: pres?.time || null,
-        distance: pres?.distance != null ? pres.distance : null,
+        distance: pres?.distance ?? null,
+        city: pres?.city ?? null,
       };
     });
 
@@ -265,7 +322,9 @@ export default function LiveSessionMonitorPage() {
           ? true
           : viewFilter === 'present'
           ? student.isPresent
-          : !student.isPresent;
+          : viewFilter === 'absent'
+          ? !student.isPresent
+          : student.isPresent && (student.distance ?? 0) > 350;
 
       return matchesSearch && matchesGroup && matchesView;
     });
@@ -275,6 +334,7 @@ export default function LiveSessionMonitorPage() {
   const enrolledCount = roster.length;
   const presentCount = roster.filter((r) => r.isPresent).length;
   const absentCount = Math.max(0, enrolledCount - presentCount);
+  const remoteCount = roster.filter((r) => r.isPresent && (r.distance ?? 0) > 350).length;
   const attendanceRate =
     enrolledCount > 0 ? Math.round((presentCount / enrolledCount) * 100) : 0;
 
@@ -285,7 +345,7 @@ export default function LiveSessionMonitorPage() {
 
     if (isCurrentlyOpen) {
       const confirmed = confirm(
-        'Ești sigur că vrei să închizi înregistrarea? Studenții care încearcă să scaneze după acest moment vor fi respinși.'
+        'Are you sure you want to close attendance check-in? Students attempting to scan after this will be rejected.'
       );
       if (!confirmed) return;
     }
@@ -304,26 +364,54 @@ export default function LiveSessionMonitorPage() {
         setSession((prev) => (prev ? { ...prev, status: newStatus } : prev));
         toast.success(
           newStatus === 'open'
-            ? 'Sesiunea a fost redeschisă pentru scanare.'
-            : 'Înregistrarea a fost închisă.'
+            ? 'Session was reopened for check-ins.'
+            : 'Attendance check-in has been closed.'
         );
       } else {
-        toast.error('Nu s-a putut modifica starea sesiunii.');
+        toast.error('Failed to update session status.');
       }
     } catch {
-      toast.error('Eroare de rețea.');
+      toast.error('Network error.');
     } finally {
       setTogglingStatus(false);
     }
   }
 
-  function copyPublicLink() {
+  const copyPublicLink = useCallback(() => {
     if (!qrData?.url) return;
     navigator.clipboard.writeText(qrData.url);
     setCopiedLink(true);
-    toast.success('Linkul de prezență a fost copiat în clipboard.');
+    toast.success('Attendance link copied to clipboard.');
     setTimeout(() => setCopiedLink(false), 2000);
-  }
+  }, [qrData?.url]);
+
+  // Lecturer keyboard shortcuts: P (present QR), C (copy URL), / (search)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const activeTag = document.activeElement?.tagName;
+      const isInput =
+        activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+
+      if (e.key === '/' && !isInput) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if ((e.key === 'p' || e.key === 'P') && !isInput && !projectionOpen) {
+        e.preventDefault();
+        setProjectionOpen(true);
+        return;
+      }
+      if ((e.key === 'c' || e.key === 'C') && !isInput) {
+        if (qrData?.url) {
+          e.preventDefault();
+          copyPublicLink();
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [qrData?.url, projectionOpen, copyPublicLink]);
 
   if (loading) {
     return (
@@ -336,12 +424,11 @@ export default function LiveSessionMonitorPage() {
   if (!session) {
     return (
       <EmptyState
-        title="Sesiunea nu a fost găsită"
-        description="Sesiunea solicitată nu există sau nu ai permisiunea de a o vizualiza."
+        title="Session not found"
+        description="The requested attendance session does not exist or was deleted."
         action={{
-          label: 'Înapoi la cursuri',
+          label: 'Back to Courses',
           onClick: () => router.push('/dashboard/courses'),
-          variant: 'outline',
         }}
       />
     );
@@ -362,8 +449,14 @@ export default function LiveSessionMonitorPage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <LiveBadge isOpen={isOpen} />
             <span className="text-xs font-mono text-muted-foreground">
-              {formatDate(session.date)} la {formatTime(session.date)}
+              {formatDate(session.date)} at {formatTime(session.date)}
             </span>
+            {session.classroom && (
+              <span className="inline-flex items-center gap-1 text-xs font-mono font-medium text-accent bg-accent/10 px-2.5 py-0.5 rounded-full border border-accent/20">
+                <MapPin className="w-3 h-3 text-accent" />
+                <span>{session.classroom}</span>
+              </span>
+            )}
             {targetGroups.length > 0 && (
               <div className="flex flex-wrap gap-1 items-center ml-1">
                 {targetGroups.map((g) => (
@@ -371,13 +464,17 @@ export default function LiveSessionMonitorPage() {
                 ))}
               </div>
             )}
+            <span className="inline-flex items-center gap-1 text-xs font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+              <ShieldCheck className="w-3 h-3" />
+              <span>1 Device / Student</span>
+            </span>
           </div>
 
           <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
             {session.course.name}
           </h1>
           <p className="text-xs text-muted-foreground">
-            Tema sesiunii:{' '}
+            Session topic:{' '}
             <span className="font-medium text-foreground">{session.name}</span>
           </p>
         </div>
@@ -392,203 +489,249 @@ export default function LiveSessionMonitorPage() {
             className={isOpen ? 'text-danger border-danger/30 hover:bg-danger-soft' : ''}
           >
             {isOpen ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-            <span>{isOpen ? 'Închide Înregistrarea' : 'Redeschide Sesiunea'}</span>
+            <span>{isOpen ? 'Close Check-in' : 'Reopen Session'}</span>
           </Button>
 
           <a href={`/api/sessions/${id}/export`}>
             <Button variant="outline" size="sm">
               <Download className="w-3.5 h-3.5 text-success" />
-              <span>Exportă Excel</span>
+              <span>Export Excel</span>
             </Button>
           </a>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={copyPublicLink}
+            className="flex items-center gap-1.5"
+            title="Copy attendance URL (Press C)"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
+            <kbd className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
+              C
+            </kbd>
+          </Button>
 
           <Button
             variant="accent"
             size="sm"
             onClick={() => setProjectionOpen(true)}
-            className="shadow-sm"
+            className="shadow-sm flex items-center gap-1.5"
+            title="Present Fullscreen QR (Press P)"
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span>Afișează QR Proiecție</span>
+            <span>Present QR</span>
+            <kbd className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/20 text-accent-foreground border border-white/20">
+              P
+            </kbd>
           </Button>
         </div>
       </div>
 
-      {/* ── Connection Banner (if SSE drops) ─────────────────────────── */}
-      {!sseConnected && (
-        <div className="p-3 rounded-card bg-warning-soft text-warning border border-warning/20 flex items-center justify-between text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <WifiOff className="w-4 h-4 animate-pulse text-warning" />
-            <span>Se reconectează la fluxul Server-Sent Events în timp real…</span>
-          </div>
-          <span className="text-[10px]">Reîncercare automată</span>
-        </div>
-      )}
-
-      {/* ── Metrics Row ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1: Înscriși */}
-        <Card className="p-5 space-y-1">
-          <span className="text-[11px] font-mono uppercase text-muted-foreground">
-            Total Înscriși
-          </span>
-          <p className="font-serif text-3xl sm:text-4xl font-semibold text-foreground tabular-nums">
-            {enrolledCount}
-          </p>
-          <p className="text-[11px] text-muted-foreground">Conform catalogului activ</p>
-        </Card>
-
-        {/* Metric 2: Prezenți (Success tone) */}
-        <Card className="p-5 space-y-1 bg-success-soft/30 border-success/20">
-          <span className="text-[11px] font-mono uppercase text-success font-semibold">
-            Prezenți Confirmați
-          </span>
-          <p className="font-serif text-3xl sm:text-4xl font-semibold text-success tabular-nums">
-            {presentCount}
-          </p>
-          <p className="text-[11px] text-muted-foreground">Scanări verificate live</p>
-        </Card>
-
-        {/* Metric 3: Absenți */}
-        <Card className="p-5 space-y-1">
-          <span className="text-[11px] font-mono uppercase text-muted-foreground">
-            Absenți Momentan
-          </span>
-          <p className="font-serif text-3xl sm:text-4xl font-semibold text-foreground/80 tabular-nums">
-            {absentCount}
-          </p>
-          <p className="text-[11px] text-muted-foreground">Studenți neconfirmați</p>
-        </Card>
-
-        {/* Metric 4: Rată Prezență cu ProgressRing */}
-        <Card className="p-5 flex items-center justify-between">
-          <div className="space-y-1">
-            <span className="text-[11px] font-mono uppercase text-muted-foreground">
-              Procent Prezență
+      {/* ── Summary Counters ───────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card className="p-4 flex items-center justify-between border-border bg-card">
+          <div className="space-y-0.5">
+            <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">
+              Enrolled
             </span>
-            <p className="font-serif text-3xl sm:text-4xl font-semibold text-accent tabular-nums">
-              {attendanceRate}%
-            </p>
-            <p className="text-[11px] text-muted-foreground">Din total eligibili</p>
+            <div className="text-2xl font-bold font-mono text-foreground">
+              {enrolledCount}
+            </div>
           </div>
-          <ProgressRing percentage={attendanceRate} size={58} strokeWidth={5} />
+          <div className="w-10 h-10 rounded-input bg-muted/60 flex items-center justify-center text-muted-foreground text-xs font-mono font-bold">
+            ALL
+          </div>
+        </Card>
+
+        <Card className="p-4 flex items-center justify-between border-emerald-500/20 bg-emerald-500/5">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                Present
+              </span>
+              {remoteCount > 0 && (
+                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
+                  {remoteCount} remote
+                </span>
+              )}
+            </div>
+            <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+              {presentCount}
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-input bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <Check className="w-5 h-5 stroke-[2.5]" />
+          </div>
+        </Card>
+
+        <Card className="p-4 flex items-center justify-between border-rose-500/20 bg-rose-500/5">
+          <div className="space-y-0.5">
+            <span className="text-[11px] font-mono text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+              Absent
+            </span>
+            <div className="text-2xl font-bold font-mono text-rose-600 dark:text-rose-400">
+              {absentCount}
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-input bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center font-mono font-bold text-xs">
+            ABS
+          </div>
+        </Card>
+
+        <Card className="p-4 flex items-center justify-between border-accent/20 bg-accent-soft/20">
+          <div className="space-y-0.5">
+            <span className="text-[11px] font-mono text-accent uppercase tracking-wider">
+              Attendance
+            </span>
+            <div className="text-2xl font-bold font-mono text-accent">
+              {attendanceRate}%
+            </div>
+          </div>
+          <ProgressRing percentage={attendanceRate} size={42} strokeWidth={4} />
         </Card>
       </div>
 
-      {/* ── Main Content Grid: Live Roster Left + Right Rail ≥1280px ──── */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-        {/* ── Left Table Area (Span 8 on XL) ────────────────────────── */}
-        <div className="xl:col-span-8 space-y-5">
-          {/* Toolbar: Search, Group Chips, Segmented View Toggle */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Caută student în catalog…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="flex min-h-[38px] w-full rounded-input border border-input bg-card pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:outline-none transition-all"
-                />
-              </div>
+      {/* ── Main Two-Column Layout ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        {/* Left 2 Cols: Live Attendance Roster */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-serif text-lg font-semibold text-foreground flex items-center gap-2">
+                <span>Student Roster</span>
+                <span className="text-xs font-mono font-normal text-muted-foreground">
+                  ({filteredRoster.length} students)
+                </span>
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Real-time check-in stream synchronized with student scans.
+              </p>
+            </div>
 
-              {session?.groups && (
+            {/* SSE Health Pill */}
+            <div className="flex items-center gap-1.5 text-[11px] font-mono">
+              {sseConnected ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Sync
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <WifiOff className="w-3 h-3" />
+                  Reconnecting…
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row gap-2.5 bg-card p-3 rounded-card border border-border">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Filter by name or email… (Press /)"
+                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-input bg-muted/40 border border-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-accent"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Group Dropdown */}
+              {targetGroups.length > 1 && (
                 <select
                   value={groupFilter}
                   onChange={(e) => setGroupFilter(e.target.value)}
-                  className="min-h-[38px] rounded-input border border-input bg-card px-3 py-1.5 text-xs text-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:outline-none transition-all cursor-pointer"
-                  aria-label="Filtrează după grupă"
+                  className="px-2.5 py-1.5 text-xs rounded-input bg-muted/40 border border-input text-foreground font-mono cursor-pointer focus:outline-none focus:border-accent"
                 >
-                  <option value="">Toate grupele</option>
-                  {session.groups
-                    .split(',')
-                    .map((g) => g.trim())
-                    .filter(Boolean)
-                    .map((g) => (
-                      <option key={g} value={g}>
-                        Grupa {g}
-                      </option>
-                    ))}
+                  <option value="">All Groups</option>
+                  {targetGroups.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
                 </select>
               )}
 
-              {/* Segmented View Toggle: All / Present / Absent */}
-              <div className="flex items-center p-1 rounded-input bg-muted border border-border text-xs select-none">
+              {/* Status Segmented Control */}
+              <div className="inline-flex rounded-input border border-input p-0.5 bg-muted/40 text-xs font-mono">
                 <button
                   type="button"
                   onClick={() => setViewFilter('all')}
-                  className={`px-3 py-1 rounded-input font-medium transition-all ${
+                  className={`px-2.5 py-1 rounded text-[11px] transition-colors ${
                     viewFilter === 'all'
                       ? 'bg-card text-foreground font-semibold shadow-xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Toți ({enrolledCount})
+                  All ({enrolledCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewFilter('present')}
-                  className={`px-3 py-1 rounded-input font-medium transition-all ${
+                  className={`px-2.5 py-1 rounded text-[11px] transition-colors ${
                     viewFilter === 'present'
-                      ? 'bg-card text-success font-semibold shadow-xs'
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold shadow-xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Prezenți ({presentCount})
+                  Present ({presentCount})
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewFilter('absent')}
-                  className={`px-3 py-1 rounded-input font-medium transition-all ${
+                  className={`px-2.5 py-1 rounded text-[11px] transition-colors ${
                     viewFilter === 'absent'
-                      ? 'bg-card text-foreground font-semibold shadow-xs'
+                      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold shadow-xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Absenți ({absentCount})
+                  Absent ({absentCount})
                 </button>
+                {remoteCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setViewFilter('remote')}
+                    className={`px-2.5 py-1 rounded text-[11px] transition-colors ${
+                      viewFilter === 'remote'
+                        ? 'bg-rose-500 text-white font-semibold shadow-xs'
+                        : 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+                    }`}
+                  >
+                    Remote ({remoteCount})
+                  </button>
+                )}
               </div>
-            </div>
-
-            {/* SSE Connection Status Pill */}
-            <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-              {sseConnected ? (
-                <span className="flex items-center gap-1.5 text-success">
-                  <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                  Conectat Live
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 text-warning">
-                  <span className="w-2 h-2 rounded-full bg-warning" />
-                  Deconectat
-                </span>
-              )}
             </div>
           </div>
 
           {/* Roster Table */}
           {filteredRoster.length === 0 ? (
             <EmptyState
-              icon={<Radio className="w-6 h-6 text-accent" />}
-              title="Se așteaptă primele scanări…"
-              description="Proiectează codul QR pe ecranul amfiteatrului. Studenții vor apărea instantaneu aici pe măsură ce confirmă prezența."
+              icon={<Radio className="w-8 h-8 text-accent" />}
+              title="Waiting for first check-ins…"
+              description="Project the QR code onto the lecture hall screen. Students will appear here instantly as they confirm attendance."
               action={{
-                label: 'Deschide Codul QR',
+                label: 'Open QR Code',
                 onClick: () => setProjectionOpen(true),
                 variant: 'accent',
               }}
             />
           ) : (
-            <div className="rounded-card border border-border bg-card overflow-hidden shadow-xs">
-              <table className="w-full text-xs text-left">
+            <div className="rounded-card border border-border bg-card overflow-x-auto shadow-xs">
+              <table className="w-full min-w-[650px] text-xs text-left">
                 <thead className="bg-muted text-muted-foreground font-medium border-b border-border sticky top-0 z-10">
                   <tr className="h-12 font-mono text-[11px] uppercase tracking-wider">
-                    <th scope="col" className="px-5 py-3">Student</th>
-                    <th scope="col" className="px-5 py-3">Grupă</th>
-                    <th scope="col" className="hidden md:table-cell px-5 py-3">Email</th>
-                    <th scope="col" className="px-5 py-3">Ora Scanării</th>
-                    <th scope="col" className="px-5 py-3 text-right">Distanță GPS</th>
+                    <th scope="col" className="px-4 py-3 whitespace-nowrap min-w-[200px]">Student</th>
+                    <th scope="col" className="px-3 py-3 whitespace-nowrap min-w-[90px]">Group</th>
+                    <th scope="col" className="hidden md:table-cell px-4 py-3 whitespace-nowrap min-w-[180px]">Email</th>
+                    <th scope="col" className="px-4 py-3 whitespace-nowrap min-w-[130px]">Check-in Time</th>
+                    <th scope="col" className="px-4 py-3 whitespace-nowrap min-w-[150px]">Scan Distance</th>
+                    <th scope="col" className="px-4 py-3 text-right whitespace-nowrap min-w-[110px]">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border font-mono text-xs">
@@ -606,12 +749,12 @@ export default function LiveSessionMonitorPage() {
                             : 'bg-muted/20 text-muted-foreground hover:bg-muted/30'
                         }`}
                       >
-                        <td className="px-5 py-2.5">
+                        <td className="px-4 py-2.5">
                           <div className="flex items-center gap-3">
                             <Avatar name={student.name} size="sm" />
                             <div className="min-w-0 font-sans">
                               <span
-                                className={`font-semibold block truncate ${
+                                className={`font-semibold block truncate max-w-[200px] ${
                                   student.isPresent ? 'text-foreground' : 'text-muted-foreground line-through decoration-border'
                                 }`}
                               >
@@ -621,34 +764,69 @@ export default function LiveSessionMonitorPage() {
                           </div>
                         </td>
 
-                        <td className="px-5 py-2.5">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           <GroupBadge group={student.group} />
                         </td>
 
-                        <td className="hidden md:table-cell px-5 py-2.5 text-muted-foreground truncate max-w-[200px]" title={student.email}>
+                        <td className="hidden md:table-cell px-4 py-2.5 text-muted-foreground truncate max-w-[200px] whitespace-nowrap" title={student.email}>
                           {student.email}
                         </td>
 
-                        <td className="px-5 py-2.5 tabular-nums">
+                        <td className="px-4 py-2.5 tabular-nums whitespace-nowrap">
                           {student.isPresent && student.checkInTime ? (
                             <span className="text-success font-medium flex items-center gap-1.5">
-                              <Check className="w-3.5 h-3.5 text-success" />
+                              <Check className="w-3.5 h-3.5 text-success stroke-[2.5]" />
                               {formatTime(student.checkInTime)}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground text-[11px]">
-                              Neînregistrat
-                            </span>
+                            <span className="text-muted-foreground text-[11px]">—</span>
                           )}
                         </td>
 
-                        <td className="px-5 py-2.5 text-right tabular-nums">
-                          {student.isPresent && student.distance != null ? (
-                            <span className="text-accent font-medium">
-                              {student.distance}m distanță
-                            </span>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          {student.isPresent ? (
+                            (() => {
+                              const distInfo = getDistanceCategory(student.distance);
+                              const distFormatted = formatDistance(student.distance);
+                              return (
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono border ${distInfo.badgeClass}`}
+                                  title={
+                                    student.distance != null
+                                      ? `Distance to host: ${formatDistance(student.distance)}`
+                                      : 'Scan distance not available'
+                                  }
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      distInfo.category === 'room'
+                                        ? 'bg-emerald-500'
+                                        : distInfo.category === 'campus'
+                                        ? 'bg-accent'
+                                        : distInfo.category === 'remote'
+                                        ? 'bg-rose-500'
+                                        : 'bg-muted-foreground'
+                                    }`}
+                                  />
+                                  {distFormatted}
+                                </span>
+                              );
+                            })()
                           ) : (
                             <span className="text-muted-foreground text-[11px]">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          {student.isPresent ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                              Present
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono text-muted-foreground bg-muted/60 border border-border">
+                              Absent
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -660,123 +838,142 @@ export default function LiveSessionMonitorPage() {
           )}
         </div>
 
-        {/* ── Right Rail: QR Thumbnail, Link & Telemetry (Span 4 on XL) ── */}
-        <div className="xl:col-span-4 space-y-6">
-          {/* QR Thumbnail Card */}
-          <Card className="p-6 text-center space-y-4">
-            <CardTitle className="text-base">Cod QR de Proiecție</CardTitle>
-            <CardDescription>
-              Fă clic pe imagine pentru a deschide modul de ecran complet pentru videoproiector.
-            </CardDescription>
+        {/* Right 1 Col: Live QR Card + Session Details */}
+        <div className="space-y-6">
+          <Card className="p-6 text-center space-y-4 border-accent/20">
+            <div className="space-y-1">
+              <span className="text-xs font-mono text-accent font-semibold uppercase tracking-wider">
+                Live Dynamic QR
+              </span>
+              <CardTitle className="text-base">Scan to Register</CardTitle>
+              <CardDescription>
+                Tokens cycle automatically every few seconds to prevent proxy attendance.
+              </CardDescription>
+            </div>
 
-            {qrData?.qr ? (
-              <div
-                onClick={() => setProjectionOpen(true)}
-                className="bg-white p-4 rounded-card border-2 border-border hover:border-accent shadow-sm inline-block cursor-pointer transition-all duration-200 group mx-auto"
-                title="Afișează pe tot ecranul"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+            <div className="p-3 bg-white rounded-card shadow-inner border border-border inline-block mx-auto max-w-[220px]">
+              {qrData?.qr ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={qrData.qr}
-                  alt="Cod QR de scanare"
-                  className={`w-48 h-48 mx-auto object-contain transition-all ${
-                    !isOpen ? 'opacity-20 blur-[1px]' : 'group-hover:scale-105'
-                  }`}
-                  style={{ imageRendering: 'pixelated' }}
+                  alt="Session Attendance QR"
+                  className="w-full h-auto rounded"
                 />
-                {!isOpen && (
-                  <p className="text-xs text-danger font-semibold mt-1">
-                    Înregistrare blocată
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="w-48 h-48 rounded-card bg-muted flex items-center justify-center mx-auto text-xs text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                Se generează…
-              </div>
-            )}
+              ) : (
+                <div className="w-[196px] h-[196px] bg-muted/30 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                </div>
+              )}
+            </div>
 
-            <Button
-              variant="accent"
-              size="sm"
-              onClick={() => setProjectionOpen(true)}
-              className="w-full justify-center"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span>Deschide Ecran Proiecție (Esc)</span>
-            </Button>
-          </Card>
+            <div className="space-y-2 pt-1">
+              <Button
+                variant="accent"
+                size="md"
+                onClick={() => setProjectionOpen(true)}
+                className="w-full shadow-sm"
+              >
+                <Maximize2 className="w-4 h-4" />
+                <span>Present Full Screen</span>
+              </Button>
 
-          {/* Public Link Card */}
-          <Card className="p-5 space-y-3">
-            <span className="text-xs font-semibold text-foreground block">
-              Link Public de Verificare
-            </span>
-            <div className="flex items-center gap-2 p-2 rounded-input bg-muted/60 border border-border font-mono text-xs">
-              <span className="truncate flex-1 text-muted-foreground select-all">
-                {qrData?.url || 'Se încarcă…'}
-              </span>
               <button
                 type="button"
                 onClick={copyPublicLink}
-                className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                title="Copiază linkul"
+                className="text-xs text-muted-foreground hover:text-foreground font-mono flex items-center justify-center gap-1.5 mx-auto py-1"
               >
-                {copiedLink ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                {copiedLink ? (
+                  <Check className="w-3 h-3 text-success" />
+                ) : (
+                  <Copy className="w-3 h-3" />
+                )}
+                <span>{copiedLink ? 'Copied URL' : 'Copy student direct URL'}</span>
               </button>
             </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Studenții pot accesa direct acest link de pe telefon dacă nu pot scana codul optic de la distanță.
-            </p>
           </Card>
 
-          {/* Session Security Telemetry Summary */}
+          {/* Session Overview Card */}
           <Card className="p-5 space-y-3 text-xs">
-            <span className="text-xs font-semibold text-foreground block border-b border-border pb-2">
-              Parametri de Securitate
-            </span>
-            <div className="space-y-2 text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Perimetru GPS:</span>
-                <span className="font-mono text-foreground font-medium">
-                  {session.classroomLat != null
-                    ? `${session.classroomRadius || 50} metri`
-                    : 'Dezactivat'}
+            <CardTitle className="text-sm">Session Overview</CardTitle>
+            <div className="space-y-2.5 text-muted-foreground pt-1 border-t border-border">
+              <div className="flex justify-between items-center">
+                <span>Status:</span>
+                <span className="font-mono text-foreground font-medium capitalize">
+                  {session.status}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Grupe permise:</span>
-                <span className="font-mono text-foreground font-medium">
-                  {targetGroups.length > 0 ? targetGroups.join(', ') : 'Toate grupele'}
+                <span>Device Protection:</span>
+                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  1 student / device
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Algoritm distanță:</span>
+                <span>Target groups:</span>
                 <span className="font-mono text-foreground font-medium">
-                  Haversine (6371 km)
+                  {targetGroups.length > 0 ? targetGroups.join(', ') : 'All groups'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Enrolled students:</span>
+                <span className="font-mono text-foreground font-medium tabular-nums">
+                  {enrolledCount}
                 </span>
               </div>
             </div>
           </Card>
+
+          {/* Rejected Submissions Log (Proxy protection) */}
+          {session.unrecognized && session.unrecognized.length > 0 && (
+            <Card className="p-5 space-y-3 text-xs border-danger/20 bg-danger-soft/10">
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <span className="font-semibold text-danger flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-danger" />
+                  Rejected Submissions ({session.unrecognized.length})
+                </span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto font-mono text-[11px]">
+                {session.unrecognized.map((u) => (
+                  <div
+                    key={u.id}
+                    className="p-2 rounded bg-background border border-danger/20 flex flex-col gap-0.5"
+                  >
+                    <div className="flex justify-between items-center text-foreground font-medium">
+                      <span>{u.email}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatTime(u.submittedAt)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-danger font-semibold">
+                      {u.reason === 'DEVICE_ALREADY_USED'
+                        ? 'Device already registered for another student'
+                        : u.reason === 'GROUP_NOT_ALLOWED'
+                        ? 'Group not scheduled for this session'
+                        : 'Email not found in course roster'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
-      {/* ── QR Projection Modal ────────────────────────────────────── */}
-      {qrData?.qr && (
-        <QRProjectionModal
-          open={projectionOpen}
-          onClose={() => setProjectionOpen(false)}
-          qrDataUrl={qrData.qr}
-          publicUrl={qrData.url}
-          courseName={session.course.name}
-          sessionName={session.name}
-          targetGroups={targetGroups}
-          presentCount={presentCount}
-          enrolledCount={enrolledCount}
-          isOpen={isOpen}
-        />
-      )}
+      {/* ── Fullscreen Projector Modal ─────────────────────────────── */}
+      <QRProjectionModal
+        open={projectionOpen}
+        onClose={() => setProjectionOpen(false)}
+        qrDataUrl={qrData?.qr || ''}
+        publicUrl={qrData?.url || ''}
+        courseName={session.course.name}
+        sessionName={session.name}
+        classroom={session.classroom}
+        targetGroups={targetGroups}
+        presentCount={presentCount}
+        enrolledCount={enrolledCount}
+        isOpen={isOpen}
+      />
     </div>
   );
 }

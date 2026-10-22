@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseGroups } from '@/lib/groups';
-import { calculateDistance } from '@/lib/geo';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { calculateDistance } from '@/lib/distance';
+import { detectIpCoordinates } from '@/lib/networkGeo';
+import { slugifyClassroom, formatClassroomName } from '@/lib/classroom';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       return NextResponse.json(
         {
           code: 'RATE_LIMITED',
-          error: 'Prea multe încercări. Te rugăm să aștepți un minut înainte de a reîncerca.',
+          error: 'Too many attempts. Please wait a minute before trying again.',
         },
         { status: 429 }
       );
@@ -26,13 +28,22 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
 
     const body = await req.json();
     const rawEmail: string = body?.email ?? '';
-    const geo = body?.geolocation as
-      | { lat: number; lng: number; accuracy?: number }
-      | undefined;
+
+    // Device identification (body or cookie fallback)
+    const clientDeviceId =
+      typeof body?.deviceId === 'string' ? body.deviceId.trim() : '';
+    const clientFingerprint =
+      typeof body?.deviceFingerprint === 'string'
+        ? body.deviceFingerprint.trim()
+        : '';
+    const cookieDeviceId =
+      req.cookies.get('attendly_device_id')?.value?.trim() || '';
+    const deviceId = clientDeviceId || cookieDeviceId || null;
+    const deviceFingerprint = clientFingerprint || null;
 
     if (!rawEmail) {
       return NextResponse.json(
-        { code: 'EMAIL_REQUIRED', error: 'Emailul universitar este obligatoriu.' },
+        { code: 'EMAIL_REQUIRED', error: 'University email is required.' },
         { status: 400 }
       );
     }
@@ -41,20 +52,45 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return NextResponse.json(
-        { code: 'INVALID_EMAIL_FORMAT', error: 'Formatul adresei de email este invalid.' },
+        { code: 'INVALID_EMAIL_FORMAT', error: 'Invalid email address format.' },
         { status: 400 }
       );
     }
 
-    // 2. Session lookup
-    const session = await prisma.session.findUnique({
-      where: { token: params.token },
+    // 2. Predefined classroom & token lookup
+    const rawToken = params.token.trim();
+    const tokenSlug = slugifyClassroom(rawToken);
+    const classroomName = formatClassroomName(rawToken);
+
+    const matchCriteria = [
+      { token: rawToken },
+      { token: tokenSlug },
+      { classroom: rawToken },
+      { classroom: classroomName },
+    ];
+
+    // Prefer open sessions first (most recent)
+    let session = await prisma.session.findFirst({
+      where: {
+        OR: matchCriteria,
+        status: 'open',
+      },
+      orderBy: { date: 'desc' },
       include: { course: true },
     });
 
+    // If no open session, find the most recent session (e.g. closed)
+    if (!session) {
+      session = await prisma.session.findFirst({
+        where: { OR: matchCriteria },
+        orderBy: { date: 'desc' },
+        include: { course: true },
+      });
+    }
+
     if (!session) {
       return NextResponse.json(
-        { code: 'INVALID_TOKEN', error: 'Cod QR invalid sau expirat.' },
+        { code: 'INVALID_TOKEN', error: 'Invalid or expired QR code.' },
         { status: 404 }
       );
     }
@@ -64,7 +100,8 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       return NextResponse.json(
         {
           code: 'SESSION_CLOSED',
-          error: 'Înregistrarea a fost închisă de profesor.',
+          error: `Attendance check-in has been closed by the instructor${session.classroom ? ` for ${session.classroom}` : ''}.`,
+          classroom: session.classroom,
         },
         { status: 403 }
       );
@@ -80,13 +117,15 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
         data: {
           sessionId: session.id,
           email,
+          deviceId,
+          deviceFingerprint,
           reason: 'NOT_IN_ROSTER',
         },
       });
       return NextResponse.json(
         {
           code: 'NOT_IN_ROSTER',
-          error: 'Adresa de email nu a fost găsită în lista oficială a studenților pentru acest curs.',
+          error: 'Email address was not found in the official course roster.',
         },
         { status: 404 }
       );
@@ -105,81 +144,93 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
           data: {
             sessionId: session.id,
             email,
+            deviceId,
+            deviceFingerprint,
             reason: 'GROUP_NOT_ALLOWED',
           },
         });
         return NextResponse.json(
           {
             code: 'GROUP_NOT_ALLOWED',
-            error: `Grupa ta (${student.group}) nu este programată pentru această sesiune. Sesiunea este deschisă pentru: ${sessionGroups.join(', ')}.`,
+            error: `Your group (${student.group}) is not scheduled for this session. This session is open to: ${sessionGroups.join(', ')}.`,
           },
           { status: 403 }
         );
       }
     }
 
-    // 6. Geofence verification
-    let computedDistance: number | null = null;
-    const hasGeofence =
-      session.classroomLat != null &&
-      session.classroomLng != null &&
-      session.classroomRadius != null &&
-      session.classroomRadius > 0;
+    // 6. Device Anti-Proxy Protection: One device per student per session
+    if (deviceId) {
+      const deviceCollision = await prisma.attendanceRecord.findFirst({
+        where: {
+          sessionId: session.id,
+          status: 'verified',
+          studentId: { not: student.id }, // Another student
+          deviceId,
+        },
+        include: { student: true },
+      });
 
-    if (hasGeofence) {
-      if (
-        !geo ||
-        typeof geo.lat !== 'number' ||
-        typeof geo.lng !== 'number' ||
-        Number.isNaN(geo.lat) ||
-        Number.isNaN(geo.lng)
-      ) {
-        return NextResponse.json(
-          {
-            code: 'LOCATION_REQUIRED',
-            error: 'Verificarea coordonatelor GPS este obligatorie pentru această sesiune.',
-          },
-          { status: 400 }
-        );
-      }
-
-      computedDistance = calculateDistance(
-        session.classroomLat!,
-        session.classroomLng!,
-        geo.lat,
-        geo.lng
-      );
-
-      if (computedDistance > session.classroomRadius) {
+      if (deviceCollision) {
         await prisma.unrecognizedSubmission.create({
           data: {
             sessionId: session.id,
             email,
-            distance: Math.round(computedDistance),
-            reason: 'OUTSIDE_GEOFENCE',
+            deviceId,
+            deviceFingerprint,
+            reason: 'DEVICE_ALREADY_USED',
           },
         });
+
         return NextResponse.json(
           {
-            code: 'OUTSIDE_GEOFENCE',
-            distance: Math.round(computedDistance),
-            allowedRadius: session.classroomRadius,
-            error: `Te afli în afara perimetrului sălii (${Math.round(computedDistance)}m, perimetru maxim admis: ${session.classroomRadius}m).`,
+            code: 'DEVICE_ALREADY_USED',
+            error: `This device has already been used to record attendance for student ${deviceCollision.student.name} in this session. Proxy attendance from the same device is strictly prohibited.`,
+            priorStudent: deviceCollision.student.name,
           },
           { status: 403 }
         );
       }
     }
 
-    // 7. Check existing attendance record
+    // 7. Distance calculation from session host
+    const rawLat = body?.coords?.lat ?? body?.coords?.latitude;
+    const rawLng = body?.coords?.lng ?? body?.coords?.longitude ?? body?.coords?.lon;
+    let studentLat: number | null =
+      typeof rawLat === 'number' && !Number.isNaN(rawLat) ? rawLat : null;
+    let studentLng: number | null =
+      typeof rawLng === 'number' && !Number.isNaN(rawLng) ? rawLng : null;
+    let studentCity: string | null =
+      typeof body?.city === 'string' ? body.city.trim() : null;
+
+    if (studentLat == null || studentLng == null) {
+      const netGeo = await detectIpCoordinates(ip);
+      if (netGeo) {
+        studentLat = netGeo.lat;
+        studentLng = netGeo.lng;
+        studentCity = studentCity || netGeo.city || null;
+      }
+    }
+
+    let distanceMeters: number | null = null;
+    if (
+      session.hostLat != null &&
+      session.hostLng != null &&
+      studentLat != null &&
+      studentLng != null
+    ) {
+      distanceMeters = calculateDistance(session.hostLat, session.hostLng, studentLat, studentLng);
+    }
+
+    // 8. Check existing attendance record for the same student
     const existing = await prisma.attendanceRecord.findUnique({
       where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
     });
 
     if (existing && existing.status === 'verified') {
-      return NextResponse.json({
+      const response = NextResponse.json({
         code: 'ALREADY_CHECKED_IN',
-        message: 'Prezența ta este deja confirmată pentru această sesiune.',
+        message: 'Your attendance has already been confirmed for this session.',
         originalCheckInTime: existing.verifiedAt || existing.createdAt,
         student: {
           name: student.name,
@@ -188,36 +239,51 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
         },
         courseName: session.course.name,
         sessionName: session.name,
+        distance: existing.distanceMeters ?? distanceMeters,
+        city: existing.studentCity ?? studentCity,
       });
+
+      if (deviceId) {
+        response.cookies.set('attendly_device_id', deviceId, {
+          maxAge: 60 * 60 * 24 * 365,
+          path: '/',
+          sameSite: 'lax',
+        });
+      }
+      return response;
     }
 
-    // 8. Record attendance as verified
+    // 9. Record attendance as verified
     const now = new Date();
     const record = await prisma.attendanceRecord.upsert({
       where: { sessionId_studentId: { sessionId: session.id, studentId: student.id } },
       update: {
         status: 'verified',
         verifiedAt: now,
-        studentLat: geo?.lat ?? null,
-        studentLng: geo?.lng ?? null,
-        studentAccuracy: geo?.accuracy ?? null,
-        distanceMeters: computedDistance != null ? Math.round(computedDistance) : null,
+        studentLat,
+        studentLng,
+        distanceMeters,
+        studentCity,
+        deviceId,
+        deviceFingerprint,
       },
       create: {
         sessionId: session.id,
         studentId: student.id,
         status: 'verified',
         verifiedAt: now,
-        studentLat: geo?.lat ?? null,
-        studentLng: geo?.lng ?? null,
-        studentAccuracy: geo?.accuracy ?? null,
-        distanceMeters: computedDistance != null ? Math.round(computedDistance) : null,
+        studentLat,
+        studentLng,
+        distanceMeters,
+        studentCity,
+        deviceId,
+        deviceFingerprint,
       },
     });
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       code: 'SUCCESS',
-      message: 'Prezență înregistrată cu succes!',
+      message: 'Attendance successfully recorded!',
       student: {
         name: student.name,
         email: student.email,
@@ -225,32 +291,70 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       },
       courseName: session.course.name,
       sessionName: session.name,
+      classroom: session.classroom,
       checkInTime: record.verifiedAt || now,
-      distance: record.distanceMeters,
+      distance: distanceMeters,
+      city: studentCity,
     });
+
+    if (deviceId) {
+      response.cookies.set('attendly_device_id', deviceId, {
+        maxAge: 60 * 60 * 24 * 365,
+        path: '/',
+        sameSite: 'lax',
+      });
+    }
+
+    return response;
   } catch (err) {
     console.error('[API attend] error:', err);
     return NextResponse.json(
-      { code: 'SERVER_ERROR', error: 'Eroare de server. Te rugăm să reîncerci.' },
+      { code: 'SERVER_ERROR', error: 'Internal server error. Please try again.' },
       { status: 500 }
     );
   }
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
-  const session = await prisma.session.findUnique({
-    where: { token: params.token },
+  const rawToken = params.token.trim();
+  const tokenSlug = slugifyClassroom(rawToken);
+  const classroomName = formatClassroomName(rawToken);
+
+  const matchCriteria = [
+    { token: rawToken },
+    { token: tokenSlug },
+    { classroom: rawToken },
+    { classroom: classroomName },
+  ];
+
+  // Prefer open sessions first (most recent)
+  let session = await prisma.session.findFirst({
+    where: {
+      OR: matchCriteria,
+      status: 'open',
+    },
+    orderBy: { date: 'desc' },
     include: { course: { select: { name: true } } },
   });
+
   if (!session) {
-    return NextResponse.json({ code: 'NOT_FOUND', error: 'Sesiunea nu a fost găsită.' }, { status: 404 });
+    session = await prisma.session.findFirst({
+      where: { OR: matchCriteria },
+      orderBy: { date: 'desc' },
+      include: { course: { select: { name: true } } },
+    });
   }
+
+  if (!session) {
+    return NextResponse.json({ code: 'NOT_FOUND', error: 'Session not found.' }, { status: 404 });
+  }
+
   return NextResponse.json({
     courseName: session.course.name,
     sessionName: session.name,
+    classroom: session.classroom || classroomName,
+    classroomSlug: slugifyClassroom(session.classroom || rawToken),
     date: session.date.toISOString(),
     status: session.status,
-    requiresLocation: session.classroomLat != null && session.classroomLng != null,
-    classroomRadius: session.classroomRadius,
   });
 }

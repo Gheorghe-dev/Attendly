@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { detectIpCoordinates } from '@/lib/networkGeo';
+import { slugifyClassroom, formatClassroomName, DEFAULT_CLASSROOM } from '@/lib/classroom';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -24,22 +26,60 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { courseId, name, date, groups, status, classroomLat, classroomLng, classroomRadius } = await req.json();
+  const body = await req.json();
+  const { courseId, name, date, groups, status } = body;
   if (!courseId || !name || !date || !groups?.length) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
   const course = await prisma.course.findFirst({ where: { id: courseId, professorId: session.user.id } });
   if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+
+  const forwarded = req.headers.get('x-forwarded-for');
+  const ip = forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1';
+
+  let hostLat: number | null = typeof body.hostLat === 'number' ? body.hostLat : null;
+  let hostLng: number | null = typeof body.hostLng === 'number' ? body.hostLng : null;
+  let hostCity: string | null = typeof body.hostCity === 'string' ? body.hostCity.trim() : null;
+
+  if (hostLat == null || hostLng == null) {
+    const geo = await detectIpCoordinates(ip);
+    if (geo) {
+      hostLat = geo.lat;
+      hostLng = geo.lng;
+      hostCity = geo.city || null;
+    }
+  }
+
+  const rawClassroom =
+    typeof body.classroom === 'string' && body.classroom.trim()
+      ? body.classroom.trim()
+      : DEFAULT_CLASSROOM;
+  const classroomName = formatClassroomName(rawClassroom);
+  const classroomSlug = slugifyClassroom(rawClassroom);
+
+  // Archive any older session holding this classroom slug so the new live session gets the clean URL
+  const existingWithToken = await prisma.session.findUnique({
+    where: { token: classroomSlug },
+  });
+  if (existingWithToken) {
+    await prisma.session.update({
+      where: { id: existingWithToken.id },
+      data: { token: `${classroomSlug}-${existingWithToken.id.slice(-6)}` },
+    });
+  }
+
   const newSession = await prisma.session.create({
     data: {
       courseId,
       name: name.trim(),
       date: new Date(date),
       groups: Array.isArray(groups) ? groups.join(',') : groups,
+      classroom: classroomName,
+      token: classroomSlug,
       status: status || 'open',
-      classroomLat: typeof classroomLat === 'number' ? classroomLat : null,
-      classroomLng: typeof classroomLng === 'number' ? classroomLng : null,
-      classroomRadius: typeof classroomRadius === 'number' ? Math.max(5, Math.min(1000, Math.round(classroomRadius))) : 50,
+      hostLat,
+      hostLng,
+      hostCity,
     },
   });
   return NextResponse.json(newSession, { status: 201 });

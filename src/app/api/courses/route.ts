@@ -16,11 +16,18 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { name } = await req.json();
-  if (!name?.trim()) return NextResponse.json({ error: 'Course name required' }, { status: 400 });
+  const body = await req.json().catch(() => ({}));
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  const description = typeof body?.description === 'string' ? body.description.trim() : null;
+
+  if (!name) return NextResponse.json({ error: 'Course name required' }, { status: 400 });
   try {
     const course = await prisma.course.create({
-      data: { name: name.trim(), professorId: session.user.id },
+      data: {
+        name,
+        description: description || null,
+        professorId: session.user.id,
+      },
     });
     return NextResponse.json(course, { status: 201 });
   } catch (err: unknown) {

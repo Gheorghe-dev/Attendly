@@ -24,14 +24,18 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'QR Attendance System',
-  description: 'Enterprise academic attendance tracker with anti-proxy verification',
+  title: 'Attendly — Academic Attendance System',
+  description:
+    'Attendly — University student attendance platform with dynamic QR codes and anti-proxy verification',
+  icons: {
+    icon: '/emblem.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
-      lang="ro"
+      lang="en"
       suppressHydrationWarning
       className={`${inter.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}
     >

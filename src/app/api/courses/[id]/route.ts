@@ -9,11 +9,23 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     where: { id: params.id, professorId: session.user.id },
     include: {
       students: { orderBy: [{ group: 'asc' }, { name: 'asc' }] },
-      sessions: { orderBy: { date: 'desc' } },
+      sessions: {
+        orderBy: { date: 'desc' },
+        include: {
+          attendance: { where: { status: 'verified' }, select: { id: true } },
+        },
+      },
     },
   });
   if (!course) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json(course);
+  const formattedCourse = {
+    ...course,
+    sessions: course.sessions.map((s) => ({
+      ...s,
+      presentCount: s.attendance.length,
+    })),
+  };
+  return NextResponse.json(formattedCourse);
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -24,16 +36,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   });
   if (!course) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const body = (await req.json().catch(() => ({}))) as { name?: string };
-  const name = (body.name ?? '').trim();
-  if (!name) return NextResponse.json({ error: 'Course name is required.' }, { status: 400 });
-  if (name.length > 200) return NextResponse.json({ error: 'Name is too long (max 200).' }, { status: 400 });
-  if (name === course.name) return NextResponse.json({ ...course, noChange: true });
+  const body = (await req.json().catch(() => ({}))) as { name?: string; description?: string };
+  const name = body.name !== undefined ? body.name.trim() : undefined;
+  const description = body.description !== undefined ? body.description.trim() : undefined;
+
+  if (name !== undefined && !name) {
+    return NextResponse.json({ error: 'Course name is required.' }, { status: 400 });
+  }
+  if (name && name.length > 200) {
+    return NextResponse.json({ error: 'Name is too long (max 200).' }, { status: 400 });
+  }
 
   try {
     const updated = await prisma.course.update({
       where: { id: params.id },
-      data: { name },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(description !== undefined ? { description: description || null } : {}),
+      },
     });
     return NextResponse.json(updated);
   } catch (err: unknown) {

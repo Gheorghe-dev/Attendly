@@ -15,9 +15,9 @@ export default function DashboardLoading() {
         <Skeleton className="h-9 w-28" />
       </div>
 
-      {/* 4 StatCards Skeleton */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
+      {/* 3 StatCards Skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[1, 2, 3].map((i) => (
           <Card key={i} className="p-5 space-y-3">
             <div className="flex justify-between items-start">
               <div className="space-y-2">

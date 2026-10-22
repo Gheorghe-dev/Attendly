@@ -22,33 +22,42 @@ export default async function CoursesPage() {
       },
       sessions: {
         orderBy: { date: 'desc' },
-        take: 1,
-        select: {
-          date: true,
+        include: {
+          _count: {
+            select: {
+              attendance: { where: { status: 'verified' } },
+            },
+          },
         },
       },
     },
     orderBy: { createdAt: 'desc' },
   });
 
-  const formattedCourses: CourseCardProps[] = courses.map((c) => ({
-    id: c.id,
-    name: c.name,
-    description: c.description,
-    studentCount: c._count.students,
-    sessionCount: c._count.sessions,
-    lastSessionDate: c.sessions[0]?.date ? new Date(c.sessions[0].date) : null,
-    attendanceRate: 85, // Default average attendance rate
-  }));
+  const formattedCourses: CourseCardProps[] = courses.map((c) => {
+    const totalAttended = c.sessions.reduce((acc, s) => acc + s._count.attendance, 0);
+    const totalPossible = c._count.sessions * c._count.students;
+    const rate = totalPossible > 0 ? Math.min(100, Math.round((totalAttended / totalPossible) * 100)) : 0;
+
+    return {
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      studentCount: c._count.students,
+      sessionCount: c._count.sessions,
+      lastSessionDate: c.sessions[0]?.date ? new Date(c.sessions[0].date) : null,
+      attendanceRate: rate,
+    };
+  });
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cursuri & Discipline"
-        description="Gestionați cataloagele de studenți, grupele academice și sesiunile de prezență pentru fiecare materie."
+        title="Courses & Modules"
+        description="Manage student rosters, academic groups, and attendance sessions for each course."
         breadcrumbs={[
-          { label: 'Panou principal', href: '/dashboard' },
-          { label: 'Cursuri' },
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Courses' },
         ]}
         action={<CreateCourseDialog />}
       />

@@ -19,8 +19,15 @@ export async function DELETE(
   }
 
   try {
-    await prisma.student.delete({
+    const student = await prisma.student.findFirst({
       where: { id: params.studentId, courseId: course.id },
+    });
+    if (!student) {
+      return NextResponse.json({ error: 'Student not found in this course.' }, { status: 404 });
+    }
+
+    await prisma.student.delete({
+      where: { id: params.studentId },
     });
     return NextResponse.json({ ok: true });
   } catch (err) {

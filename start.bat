@@ -1,12 +1,12 @@
 @echo off
 REM ============================================================================
-REM  QR Attendance System - All-In-One Launcher
+REM  Attendly - All-In-One Launcher
 REM  Automatically unblocks firewall, opens port 3000, configures Wi-Fi,
 REM  starts the Next.js server, and launches the worldwide tunnel.
 REM ============================================================================
 setlocal
 cd /d "%~dp0"
-title QR Attendance System
+title Attendly - Smart Attendance System
 
 REM --- Step 1: Request Administrator Elevation if not elevated ---------------
 net session >nul 2>&1
@@ -19,7 +19,7 @@ if %errorLevel% neq 0 (
 
 echo.
 echo   ========================================================
-echo             QR ATTENDANCE SYSTEM - AUTO START
+echo                 ATTENDLY - AUTO START LAUNCHER
 echo   ========================================================
 echo.
 

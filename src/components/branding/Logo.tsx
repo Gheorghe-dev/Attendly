@@ -1,9 +1,11 @@
 import React from 'react';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 interface LogoProps {
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'hero';
   showTagline?: boolean;
+  collapsed?: boolean;
   href?: string;
   className?: string;
 }
@@ -11,71 +13,64 @@ interface LogoProps {
 export function Logo({
   size = 'md',
   showTagline = false,
+  collapsed = false,
   href,
   className = '',
 }: LogoProps) {
   const iconSizes = {
-    sm: 'w-7 h-7',
-    md: 'w-8 h-8',
-    lg: 'w-10 h-10',
+    sm: 'w-8 h-8',
+    md: 'w-9 h-9',
+    lg: 'w-11 h-11',
+    hero: 'w-14 h-14',
   };
 
   const textSizes = {
     sm: 'text-sm',
     md: 'text-base',
     lg: 'text-lg',
+    hero: 'text-2xl',
   };
 
   const content = (
-    <div className={`inline-flex items-center gap-3 select-none ${className}`}>
-      {/* 3x3 QR-Grid Glyph with 1 gold module */}
+    <div className={cn('inline-flex items-center gap-2.5 select-none', className)}>
+      {/* Attendly Glowing Holographic Emblem */}
       <div
-        className={`${iconSizes[size]} rounded-card bg-primary text-primary-foreground p-1.5 flex items-center justify-center shadow-sm relative overflow-hidden group`}
+        className={cn(
+          'relative rounded-card overflow-hidden bg-[#0A0E17] border border-accent/40 shadow-xs flex-shrink-0 flex items-center justify-center p-0.5 group-hover:scale-105 transition-transform duration-200',
+          iconSizes[size]
+        )}
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-full h-full"
-        >
-          {/* Top-Left Module */}
-          <rect x="2" y="2" width="6" height="6" rx="1" fill="currentColor" />
-          <rect x="4" y="4" width="2" height="2" fill="var(--background)" />
-          {/* Top-Right Module */}
-          <rect x="16" y="2" width="6" height="6" rx="1" fill="currentColor" />
-          <rect x="18" y="4" width="2" height="2" fill="var(--background)" />
-          {/* Bottom-Left Module */}
-          <rect x="2" y="16" width="6" height="6" rx="1" fill="currentColor" />
-          <rect x="4" y="18" width="2" height="2" fill="var(--background)" />
-          {/* Center Signature Gold Module */}
-          <rect x="10" y="10" width="4" height="4" rx="1" fill="var(--accent)" />
-          {/* Data Modules */}
-          <rect x="10" y="4" width="4" height="2" rx="0.5" fill="currentColor" opacity="0.6" />
-          <rect x="10" y="18" width="4" height="2" rx="0.5" fill="currentColor" opacity="0.6" />
-          <rect x="16" y="10" width="2" height="4" rx="0.5" fill="currentColor" opacity="0.6" />
-          <rect x="4" y="10" width="2" height="4" rx="0.5" fill="currentColor" opacity="0.6" />
-          <rect x="16" y="16" width="6" height="6" rx="1" fill="currentColor" opacity="0.8" />
-        </svg>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/emblem.png"
+          alt="Attendly"
+          className="w-full h-full object-cover rounded-[5px]"
+        />
       </div>
 
-      <div className="flex flex-col">
-        <span
-          className={`font-serif font-semibold tracking-tight text-foreground ${textSizes[size]}`}
-        >
-          QR Attendance
-        </span>
-        {showTagline && (
-          <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">
-            Academic Edition
+      {!collapsed && (
+        <div className="flex flex-col min-w-0">
+          <span
+            className={cn(
+              'font-serif font-bold tracking-tight text-foreground leading-none',
+              textSizes[size]
+            )}
+          >
+            Attendly
           </span>
-        )}
-      </div>
+          {showTagline && (
+            <span className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground mt-1">
+              Academic Edition
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 
   if (href) {
     return (
-      <Link href={href} className="inline-flex items-center">
+      <Link href={href} className="inline-flex items-center group">
         {content}
       </Link>
     );

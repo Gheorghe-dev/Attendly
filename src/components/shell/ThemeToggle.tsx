@@ -28,8 +28,8 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       type="button"
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
       className={`min-h-[36px] min-w-[36px] p-2 rounded-input border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center justify-center ${className}`}
-      aria-label={isDark ? 'Comută pe tema luminoasă' : 'Comută pe tema întunecată'}
-      title={isDark ? 'Tema luminoasă' : 'Tema întunecată'}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={isDark ? 'Light mode' : 'Dark mode'}
     >
       {isDark ? <Sun className="w-4 h-4 text-accent" /> : <Moon className="w-4 h-4 text-primary" />}
     </button>

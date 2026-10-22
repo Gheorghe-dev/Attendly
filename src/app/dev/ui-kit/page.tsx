@@ -29,9 +29,9 @@ export default function DevUiKitPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const steps = [
-    { title: 'Încărcare', description: 'Selectează fișierul' },
-    { title: 'Validare', description: 'Verifică erorile' },
-    { title: 'Confirmare', description: 'Importă studenții' },
+    { title: 'Upload', description: 'Select file' },
+    { title: 'Validation', description: 'Check errors' },
+    { title: 'Confirmation', description: 'Import students' },
   ];
 
   return (
@@ -49,17 +49,17 @@ export default function DevUiKitPage() {
 
       <PageHeader
         breadcrumbs={[
-          { label: 'Dezvoltare', href: '#' },
-          { label: 'UI Kit & Componente' },
+          { label: 'Development', href: '#' },
+          { label: 'UI Kit & Components' },
         ]}
         title="Modern Academic Elegance UI Kit"
-        description="Biblioteca de componente standardizate pentru sistemul universitar de prezență. Fiecare componentă respectă paleta ivory/navy/gold și criteriile de contrast WCAG AA."
+        description="Standardized component library for the university attendance system. Each component follows the ivory/navy/gold palette and WCAG AA contrast criteria."
       />
 
       {/* 1. Buttons */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          1. Butoane (Toate stările și dimensiunile)
+          1. Buttons (All states and sizes)
         </h3>
         <div className="flex flex-wrap gap-3 items-center">
           <Button variant="primary">Primary Navy</Button>
@@ -80,20 +80,20 @@ export default function DevUiKitPage() {
       {/* 2. Badges & Group Badges */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          2. Badge-uri academice &amp; Indicatoare de stare
+          2. Academic Badges &amp; Status Indicators
         </h3>
         <div className="flex flex-wrap gap-3 items-center">
-          <Badge variant="default">Implicit</Badge>
+          <Badge variant="default">Default</Badge>
           <Badge variant="accent">Accent Gold</Badge>
-          <Badge variant="success">Prezent (Confirmat)</Badge>
+          <Badge variant="success">Present (Confirmed)</Badge>
           <Badge variant="danger">Absent</Badge>
-          <Badge variant="warning">Avertisment GPS</Badge>
-          <Badge variant="info">Informație</Badge>
+          <Badge variant="warning">Pending</Badge>
+          <Badge variant="info">Information</Badge>
           <LiveBadge isOpen={true} />
           <LiveBadge isOpen={false} />
         </div>
         <div className="flex flex-wrap gap-2 items-center pt-2">
-          <span className="text-xs text-muted-foreground mr-2">Grupe inginerie:</span>
+          <span className="text-xs text-muted-foreground mr-2">Engineering groups:</span>
           <GroupBadge group="AIA 3.3A" />
           <GroupBadge group="AIA 3.1 B" />
           <GroupBadge group="ELA 2.2 A" />
@@ -104,23 +104,23 @@ export default function DevUiKitPage() {
       {/* 3. Inputs & Form Fields */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          3. Câmpuri de formular (Înălțime tactilă ≥44px)
+          3. Form Fields (Touch target ≥44px)
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <Input
-            label="Email universitar"
-            placeholder="student@univ.ro"
-            helperText="Folosește adresa instituțională @student.univ.ro"
+            label="University Email"
+            placeholder="student@university.edu"
+            helperText="Use your institutional @student.university.edu address"
           />
           <Input
-            label="Nume complet"
-            placeholder="Popescu Andrei"
-            defaultValue="Alexandru Ioan"
+            label="Full Name"
+            placeholder="John Smith"
+            defaultValue="Alex Johnson"
           />
           <Input
-            label="Câmp cu eroare"
-            placeholder="adresa-invalida"
-            error="Adresa de email nu are un format valid"
+            label="Field with error"
+            placeholder="invalid-address"
+            error="Email address format is invalid"
           />
         </div>
       </section>
@@ -128,35 +128,35 @@ export default function DevUiKitPage() {
       {/* 4. StatCards & ProgressRing */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          4. StatCards cu cifre mari Fraunces &amp; Sparkline SVG
+          4. StatCards with large Fraunces numbers &amp; SVG Sparkline
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
-            label="Studenți înscriși"
+            label="Enrolled students"
             value="148"
-            context="Total pe 3 cursuri active"
+            context="Total across 3 active courses"
             icon={<Users className="w-4 h-4" />}
             sparklineData={[120, 130, 138, 142, 145, 148]}
           />
           <StatCard
-            label="Rată medie prezență"
+            label="Avg. attendance rate"
             value="86%"
-            context="Față de 78% semestrul trecut"
+            context="Compared to 78% last semester"
             trend={{ positive: true, text: '+8%' }}
             icon={<CheckCircle className="w-4 h-4" />}
             sparklineData={[70, 75, 82, 80, 85, 86]}
           />
           <StatCard
-            label="Sesiuni finalizate"
+            label="Completed sessions"
             value="24"
-            context="12 cursuri, 12 laboratoare"
+            context="12 lectures, 12 labs"
             icon={<FileSpreadsheet className="w-4 h-4" />}
           />
           <Card className="p-5 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-mono uppercase text-muted-foreground">Prezență live</p>
-              <h4 className="font-serif text-2xl font-semibold mt-1">Sesiune activă</h4>
-              <p className="text-xs text-muted-foreground mt-0.5">24 din 30 prezenți</p>
+              <p className="text-[11px] font-mono uppercase text-muted-foreground">Live attendance</p>
+              <h4 className="font-serif text-2xl font-semibold mt-1">Active session</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">24 of 30 present</p>
             </div>
             <ProgressRing percentage={80} size={58} strokeWidth={5} />
           </Card>
@@ -166,7 +166,7 @@ export default function DevUiKitPage() {
       {/* 5. Stepper & Dropzone */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          5. Stepper &amp; Dropzone încărcare catalog Excel
+          5. Stepper &amp; Dropzone Excel roster upload
         </h3>
         <Card className="p-6 space-y-6">
           <Stepper
@@ -175,10 +175,10 @@ export default function DevUiKitPage() {
           />
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}>
-              Pasul anterior
+              Previous Step
             </Button>
             <Button size="sm" variant="accent" onClick={() => setCurrentStep(Math.min(2, currentStep + 1))}>
-              Pasul următor
+              Next Step
             </Button>
           </div>
 
@@ -193,15 +193,15 @@ export default function DevUiKitPage() {
       {/* 6. MultiSelectChips */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          6. Selectare multiplă a grupelor țintă
+          6. Multi-select target groups
         </h3>
         <Card className="p-6">
           <MultiSelectChips
-            label="Selectează grupele participante la laborator"
+            label="Select participating lab groups"
             options={['AIA 3.3A', 'AIA 3.1 B', 'ELA 2.2 A', 'ELA 2.1 B']}
             selected={selectedGroups}
             onChange={setSelectedGroups}
-            helperText="Dacă nu este selectată nicio grupă, toți studenții din curs pot confirma prezența."
+            helperText="If no group is selected, all enrolled students can confirm attendance."
           />
         </Card>
       </section>
@@ -209,28 +209,28 @@ export default function DevUiKitPage() {
       {/* 7. EmptyState & Avatars */}
       <section className="space-y-4">
         <h3 className="font-serif text-lg font-semibold border-b border-border pb-2">
-          7. Stări goale (EmptyState) &amp; Monograme Avatar
+          7. Empty states &amp; Avatar monograms
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <EmptyState
             icon={<QrCode className="w-6 h-6 text-accent" />}
-            title="Nicio sesiune deschisă"
-            description="Lansează o nouă sesiune de prezență pentru a genera codul QR de proiecție."
+            title="No open sessions"
+            description="Launch a new attendance session to generate a projection QR code."
             action={{
-              label: 'Creează prima sesiune',
+              label: 'Create first session',
               onClick: () => {},
               variant: 'accent',
             }}
           />
 
           <Card className="p-6 space-y-4">
-            <CardTitle>Monograme studenți</CardTitle>
-            <CardDescription>Generare automată a inițialelor cu fundal academic temperat.</CardDescription>
+            <CardTitle>Student Monograms</CardTitle>
+            <CardDescription>Automatic initials generator with academic background styling.</CardDescription>
             <div className="flex items-center gap-3">
               <Avatar name="Alan Turing" size="lg" />
-              <Avatar name="Popescu Andrei" size="md" />
-              <Avatar name="Maria Ionescu" size="sm" />
-              <Avatar name="Cristian Radu" size="sm" />
+              <Avatar name="John Smith" size="md" />
+              <Avatar name="Emily Watson" size="sm" />
+              <Avatar name="Alex Johnson" size="sm" />
             </div>
           </Card>
         </div>

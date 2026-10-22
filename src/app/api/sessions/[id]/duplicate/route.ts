@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { slugifyClassroom, DEFAULT_CLASSROOM } from '@/lib/classroom';
 
 /**
  * Create a new session that mirrors another one (same name + groups + classroom).
@@ -21,16 +22,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
   }
 
+  const classroomName = source.classroom || DEFAULT_CLASSROOM;
+  const classroomSlug = slugifyClassroom(classroomName);
+
+  // Archive any older session holding this classroom slug
+  const existingWithToken = await prisma.session.findUnique({
+    where: { token: classroomSlug },
+  });
+  if (existingWithToken) {
+    await prisma.session.update({
+      where: { id: existingWithToken.id },
+      data: { token: `${classroomSlug}-${existingWithToken.id.slice(-6)}` },
+    });
+  }
+
   const created = await prisma.session.create({
     data: {
       courseId: source.courseId,
       name: (body.name ?? source.name).trim(),
       date,
       groups: source.groups,
+      classroom: classroomName,
+      token: classroomSlug,
       status: 'open',
-      classroomLat: source.classroomLat,
-      classroomLng: source.classroomLng,
-      classroomRadius: source.classroomRadius,
+      hostLat: source.hostLat,
+      hostLng: source.hostLng,
+      hostCity: source.hostCity,
     },
   });
 

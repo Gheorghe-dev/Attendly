@@ -27,6 +27,7 @@ export default async function SessionsPage() {
     date: s.date.toISOString(),
     status: s.status,
     groups: s.groups,
+    classroom: s.classroom,
     course: {
       id: s.course.id,
       name: s.course.name,
@@ -37,17 +38,17 @@ export default async function SessionsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Sesiuni de Prezență"
-        description="Istoric complet al transmisiilor QR, prezențelor validate în timp real și rapoartelor descărcabile."
+        title="Attendance Sessions"
+        description="Complete history of QR broadcasts, real-time verified attendance, and downloadable reports."
         breadcrumbs={[
-          { label: 'Panou principal', href: '/dashboard' },
-          { label: 'Sesiuni' },
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Sessions' },
         ]}
         action={
           <Link href="/dashboard/courses">
             <Button variant="accent" size="sm">
               <Plus className="w-3.5 h-3.5" />
-              <span>Sesiune nouă</span>
+              <span>New Session</span>
             </Button>
           </Link>
         }

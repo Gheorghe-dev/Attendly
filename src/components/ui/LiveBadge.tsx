@@ -33,7 +33,7 @@ export function LiveBadge({
       )}
     >
       <span className="inline-flex rounded-full h-2 w-2 bg-muted-foreground/60" />
-      <span>ÎNCHIS</span>
+      <span>CLOSED</span>
     </span>
   );
 }

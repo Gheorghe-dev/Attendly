@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Card, CardTitle, CardDescription } from '@/components/ui/Card';
 import { SettingsForm } from './SettingsForm';
+import { DemoResetCard } from './DemoResetCard';
 import { formatDate } from '@/lib/utils';
 import {
   GraduationCap,
@@ -37,11 +38,11 @@ export default async function SettingsPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <PageHeader
-        title="Setări & Securitate"
-        description="Gestionați profilul de cadru didactic, securitatea acreditărilor și starea instanței locale."
+        title="Settings & Security"
+        description="Manage your instructor profile, credential security, and local instance status."
         breadcrumbs={[
-          { label: 'Panou principal', href: '/dashboard' },
-          { label: 'Setări' },
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Settings' },
         ]}
       />
 
@@ -49,14 +50,14 @@ export default async function SettingsPage() {
       <Card className="p-6 sm:p-7 shadow-xs border-border space-y-6">
         <div className="flex items-center gap-3 pb-4 border-b border-border">
           <div className="w-10 h-10 rounded-input bg-primary text-primary-foreground flex items-center justify-center font-serif font-bold text-base border border-accent/20">
-            {professor.name?.charAt(0) || 'P'}
+            {professor.name?.charAt(0) || 'I'}
           </div>
           <div>
             <CardTitle className="text-base font-serif">
-              {professor.name || 'Cadru Didactic'}
+              {professor.name || 'Instructor'}
             </CardTitle>
             <CardDescription>
-              Profil de utilizator autorizat pe instanța locală QR Attendance.
+              Authorized instructor profile on this local Attendly instance.
             </CardDescription>
           </div>
         </div>
@@ -66,7 +67,7 @@ export default async function SettingsPage() {
             <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Adresă de e-mail
+                Email Address
               </div>
               <div className="font-semibold text-foreground truncate mt-0.5">
                 {professor.email}
@@ -78,10 +79,10 @@ export default async function SettingsPage() {
             <GraduationCap className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Discipline alocate
+                Assigned Courses
               </div>
               <div className="font-semibold text-foreground mt-0.5 tabular-nums">
-                {professor._count.courses} cursuri active
+                {professor._count.courses} active courses
               </div>
             </div>
           </div>
@@ -90,7 +91,7 @@ export default async function SettingsPage() {
             <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Data înregistrării
+                Registration Date
               </div>
               <div className="font-semibold text-foreground mt-0.5">
                 {formatDate(professor.createdAt)}
@@ -102,7 +103,7 @@ export default async function SettingsPage() {
             <Server className="w-4 h-4 text-emerald-500 flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Mod găzduire
+                Deployment Mode
               </div>
               <div className="font-semibold text-foreground mt-0.5 flex items-center gap-1.5">
                 <span>Self-hosted (SQLite)</span>
@@ -114,6 +115,9 @@ export default async function SettingsPage() {
 
       {/* Password Change Form */}
       <SettingsForm />
+
+      {/* Demo Account Reset Section */}
+      {professor.email === 'prof@university.edu' && <DemoResetCard />}
     </div>
   );
 }

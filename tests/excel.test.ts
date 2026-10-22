@@ -150,13 +150,21 @@ describe('buildStudentTemplateExcel', () => {
 });
 
 describe('buildAttendanceExcel', () => {
-  it('builds a valid xlsx buffer', async () => {
+  it('builds a valid xlsx buffer with scan distance telemetry', async () => {
     const students = [
       { name: 'Alice', email: 'alice@uni.edu', group: 'AIA 3.3A' },
       { name: 'Bob', email: 'bob@uni.edu', group: 'AIA 3.1 B' },
     ];
     const attendance = new Map([
-      ['alice@uni.edu', { verifiedAt: new Date(), status: 'verified' }],
+      [
+        'alice@uni.edu',
+        {
+          verifiedAt: new Date(),
+          status: 'verified',
+          distanceMeters: 200000,
+          studentCity: 'Timisoara',
+        },
+      ],
     ]);
     const buf = await buildAttendanceExcel({
       students,
@@ -178,7 +186,16 @@ describe('buildAttendanceExcel', () => {
       row.eachCell((c) => vals.push(String(c.value)));
       rows.push(vals);
     });
+
+    // Check header
+    expect(rows[0]).toContain('Scan Distance');
+
+    // Check Alice (Present with distance)
     expect(rows[1]).toContain('Present');
+    expect(rows[1]).toContain('200 km');
+
+    // Check Bob (Absent)
     expect(rows[2]).toContain('Absent');
+    expect(rows[2]).toContain('—');
   });
 });

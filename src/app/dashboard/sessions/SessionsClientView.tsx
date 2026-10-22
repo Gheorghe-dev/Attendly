@@ -27,6 +27,7 @@ export interface SessionItem {
   date: string;
   status: string;
   groups: string;
+  classroom?: string | null;
   course: {
     id: string;
     name: string;
@@ -72,13 +73,13 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
     return (
       <EmptyState
         icon={<Layers className="w-6 h-6" />}
-        title="Nicio sesiune de prezență"
-        description="Nu ați lansat încă nicio sesiune. Alegeți o disciplină din lista de cursuri și lansați o sesiune cu generare de cod QR."
+        title="No attendance sessions"
+        description="You have not launched any sessions yet. Choose a course from the courses list and launch an attendance session with QR generation."
         action={
           <Link href="/dashboard/courses">
             <Button variant="accent" size="sm">
               <Plus className="w-3.5 h-3.5" />
-              <span>Mergi la Cursuri</span>
+              <span>Go to Courses</span>
             </Button>
           </Link>
         }
@@ -93,7 +94,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
         {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Input
-            placeholder="Căutare după sesiune, disciplină sau grupă..."
+            placeholder="Search by session, course, or group..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 pr-9"
@@ -121,7 +122,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Toate ({initialSessions.length})
+            All ({initialSessions.length})
           </button>
           <button
             type="button"
@@ -144,7 +145,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Încheiate ({initialSessions.length - openCount})
+            Closed ({initialSessions.length - openCount})
           </button>
         </div>
       </div>
@@ -154,7 +155,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
         <div className="p-3.5 rounded-card bg-card border border-border flex items-center justify-between">
           <div className="space-y-0.5">
             <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">
-              Total Sesiuni
+              Total Sessions
             </span>
             <div className="text-xl font-bold font-mono text-foreground tabular-nums">
               {initialSessions.length}
@@ -166,7 +167,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
         <div className="p-3.5 rounded-card bg-card border border-border flex items-center justify-between">
           <div className="space-y-0.5">
             <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">
-              Sesiuni Active Acum
+              Active Sessions Now
             </span>
             <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tabular-nums">
               {openCount}
@@ -178,7 +179,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
         <div className="p-3.5 rounded-card bg-card border border-border flex items-center justify-between">
           <div className="space-y-0.5">
             <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">
-              Prezențe Validate Total
+              Total Verified Attendance
             </span>
             <div className="text-xl font-bold font-mono text-foreground tabular-nums">
               {totalVerified}
@@ -193,10 +194,10 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
         <div className="text-center py-12 px-4 rounded-card border border-dashed border-border bg-card/40">
           <Layers className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-50" />
           <p className="font-serif text-base font-semibold text-foreground">
-            Nicio sesiune găsită
+            No sessions found
           </p>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-            Nicio sesiune nu corespunde criteriilor de filtrare selectate.
+            No sessions match the selected filter criteria.
           </p>
         </div>
       ) : (
@@ -252,6 +253,14 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
 
                     <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-muted-foreground pt-0.5">
                       <span>{formatDateTime(s.date)}</span>
+                      {s.classroom && (
+                        <>
+                          <span>·</span>
+                          <span className="font-mono text-[11px] px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 font-medium">
+                            📍 {s.classroom}
+                          </span>
+                        </>
+                      )}
                       {groupsList.length > 0 && (
                         <>
                           <span>·</span>
@@ -274,7 +283,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
                       {s.verifiedCount}
                     </div>
                     <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">
-                      validați
+                      verified
                     </div>
                   </div>
 
@@ -289,12 +298,12 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
                         {isOpen ? (
                           <>
                             <Radio className="w-3.5 h-3.5 text-inherit animate-pulse" />
-                            <span>Monitorizează</span>
+                            <span>Monitor Live</span>
                           </>
                         ) : (
                           <>
                             <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                            <span>Detalii</span>
+                            <span>Details</span>
                           </>
                         )}
                       </Button>
@@ -302,7 +311,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
 
                     <a
                       href={`/api/sessions/${s.id}/export`}
-                      title="Descarcă raport prezență Excel (.xlsx)"
+                      title="Download Excel attendance report (.xlsx)"
                     >
                       <Button
                         variant="ghost"

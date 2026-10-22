@@ -46,9 +46,9 @@ export function ImportRosterDialog({
   const [replaceExisting, setReplaceExisting] = useState(false);
 
   const steps = [
-    { title: 'Încărcare', description: 'Selectează fișierul' },
-    { title: 'Validare', description: 'Verifică datele' },
-    { title: 'Confirmare', description: 'Scrie în baza de date' },
+    { title: 'Upload', description: 'Select spreadsheet' },
+    { title: 'Validation', description: 'Verify records' },
+    { title: 'Confirmation', description: 'Commit to database' },
   ];
 
   async function handleFileSelect(selectedFile: File) {
@@ -68,14 +68,14 @@ export function ImportRosterDialog({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Fișierul nu a putut fi procesat.');
+        setError(data.error || 'The file could not be processed.');
         return;
       }
 
       setPreview(data.validation);
       setCurrentStep(1); // Advance to Validate step
     } catch {
-      setError('Eroare la comunicarea cu serverul.');
+      setError('Server communication error.');
     } finally {
       setUploading(false);
     }
@@ -98,18 +98,19 @@ export function ImportRosterDialog({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Nu s-au putut salva datele.');
+        setError(data.error || 'Could not save data.');
         return;
       }
 
+      const count = data.importedCount ?? data.imported ?? 0;
       toast.success(
-        `Au fost importați ${data.importedCount} studenți în cursul "${courseName}".`
+        `Successfully imported ${count} students into course "${courseName}".`
       );
       onSuccess?.();
       onClose();
       router.refresh();
     } catch {
-      setError('Eroare la scrierea datelor.');
+      setError('Error saving data.');
     } finally {
       setCommitting(false);
     }
@@ -139,9 +140,9 @@ export function ImportRosterDialog({
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <CardTitle>Import Catalog Studenți din Excel</CardTitle>
+              <CardTitle>Import Student Roster from Excel</CardTitle>
               <CardDescription>
-                Încarcă lista oficială a studenților pentru cursul {courseName}.
+                Upload the official student roster for course {courseName}.
               </CardDescription>
             </div>
           </div>
@@ -171,12 +172,12 @@ export function ImportRosterDialog({
               onFileSelect={handleFileSelect}
               selectedFile={file}
               onClear={reset}
-              helper="Trage fișierul de catalog (.xlsx) aici sau fă clic pentru a selecta"
+              helper="Drag and drop your roster file (.xlsx) here or click to browse"
             />
 
             {uploading && (
               <div className="flex items-center justify-center gap-2 p-3 rounded-input bg-accent-soft text-accent text-xs font-mono animate-pulse">
-                <span>Se analizează structura tabelului Excel…</span>
+                <span>Analyzing Excel spreadsheet structure…</span>
               </div>
             )}
 
@@ -185,15 +186,15 @@ export function ImportRosterDialog({
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-foreground flex items-center gap-2">
                   <Info className="w-4 h-4 text-accent" />
-                  Structură recomandată tabel Excel (.xlsx)
+                  Recommended Excel spreadsheet structure (.xlsx)
                 </span>
                 <a
                   href="/api/courses/template"
                   className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent hover:underline font-medium"
-                  download="sablon-catalog-studenti.xlsx"
+                  download="student-roster-template.xlsx"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Descarcă Șablon (.xlsx)</span>
+                  <span>Download Template (.xlsx)</span>
                 </a>
               </div>
 
@@ -208,21 +209,21 @@ export function ImportRosterDialog({
                   </thead>
                   <tbody className="text-foreground">
                     <tr className="border-b border-border/40">
-                      <td className="py-1 px-2">Popescu Andrei</td>
-                      <td className="py-1 px-2 text-muted-foreground">andrei.popescu@student.univ.ro</td>
-                      <td className="py-1 px-2 text-accent">AIA 3.3A</td>
+                      <td className="py-1 px-2">John Smith</td>
+                      <td className="py-1 px-2 text-muted-foreground">john.smith@university.edu</td>
+                      <td className="py-1 px-2 text-accent">CS 3.1A</td>
                     </tr>
                     <tr>
-                      <td className="py-1 px-2">Ionescu Maria</td>
-                      <td className="py-1 px-2 text-muted-foreground">maria.ionescu@student.univ.ro</td>
-                      <td className="py-1 px-2 text-accent">ELA 2.2 A</td>
+                      <td className="py-1 px-2">Emily Watson</td>
+                      <td className="py-1 px-2 text-muted-foreground">emily.watson@university.edu</td>
+                      <td className="py-1 px-2 text-accent">CS 3.2B</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Algoritmul este tolerant la antete non-standard (ex. Nume, Email, Grupa), detectează tabele inversate pe orizontală și grupe cu puncte și spații.
+                The parser is tolerant of non-standard headers (e.g. Name, Email, Group), handles transposed sheets, and normalizes group codes with dots and spaces.
               </p>
             </div>
           </div>
@@ -235,7 +236,7 @@ export function ImportRosterDialog({
             <div className="grid grid-cols-3 gap-3">
               <div className="p-3.5 rounded-card bg-success-soft border border-success/20 text-success">
                 <span className="text-[10px] font-mono uppercase block font-semibold">
-                  Rânduri Valide
+                  Valid Rows
                 </span>
                 <span className="text-2xl font-serif font-bold tabular-nums">
                   {preview.valid.length}
@@ -244,7 +245,7 @@ export function ImportRosterDialog({
 
               <div className="p-3.5 rounded-card bg-danger-soft border border-danger/20 text-danger">
                 <span className="text-[10px] font-mono uppercase block font-semibold">
-                  Erori de Format
+                  Formatting Errors
                 </span>
                 <span className="text-2xl font-serif font-bold tabular-nums">
                   {preview.errors.length}
@@ -253,7 +254,7 @@ export function ImportRosterDialog({
 
               <div className="p-3.5 rounded-card bg-warning-soft border border-warning/20 text-warning">
                 <span className="text-[10px] font-mono uppercase block font-semibold">
-                  Duplicate
+                  Duplicates
                 </span>
                 <span className="text-2xl font-serif font-bold tabular-nums">
                   {preview.duplicates.length}
@@ -265,12 +266,12 @@ export function ImportRosterDialog({
             {preview.errors.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-danger">
-                  Rânduri cu erori (vor fi ignorate la import):
+                  Rows with errors (will be skipped during import):
                 </p>
                 <div className="max-h-36 overflow-y-auto rounded-card border border-danger/20 p-2 bg-danger-soft/30 text-xs font-mono space-y-1">
                   {preview.errors.map((err, i) => (
                     <div key={i} className="flex items-center justify-between text-danger">
-                      <span>Rândul {err.row}:</span>
+                      <span>Row {err.row}:</span>
                       <span className="font-normal">{err.reason}</span>
                     </div>
                   ))}
@@ -281,15 +282,15 @@ export function ImportRosterDialog({
             {/* Valid Sample Preview */}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-foreground">
-                Previzualizare primele înregistrări valide:
+                Preview of first valid records:
               </p>
               <div className="max-h-48 overflow-y-auto rounded-card border border-border">
                 <table className="w-full text-xs font-mono">
                   <thead className="bg-muted text-muted-foreground sticky top-0 border-b border-border">
                     <tr>
-                      <th className="text-left py-2 px-3 font-medium">Nume</th>
+                      <th className="text-left py-2 px-3 font-medium">Name</th>
                       <th className="text-left py-2 px-3 font-medium">Email</th>
-                      <th className="text-left py-2 px-3 font-medium">Grupă</th>
+                      <th className="text-left py-2 px-3 font-medium">Group</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -305,7 +306,7 @@ export function ImportRosterDialog({
               </div>
               {preview.valid.length > 10 && (
                 <p className="text-[11px] font-mono text-muted-foreground text-center">
-                  + alte {preview.valid.length - 10} înregistrări valide pregătite
+                  + {preview.valid.length - 10} other valid records ready
                 </p>
               )}
             </div>
@@ -319,14 +320,14 @@ export function ImportRosterDialog({
                 className="rounded border-input text-accent focus:ring-accent"
               />
               <span>
-                Înlocuiește complet studenții existenți (șterge studenții anteriori din acest curs)
+                Replace existing students completely (removes previously enrolled students in this course)
               </span>
             </label>
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-4 border-t border-border">
               <Button variant="outline" size="sm" onClick={reset}>
-                Alege alt fișier
+                Choose another file
               </Button>
               <Button
                 variant="accent"
@@ -334,7 +335,7 @@ export function ImportRosterDialog({
                 disabled={preview.valid.length === 0}
                 onClick={() => setCurrentStep(2)}
               >
-                <span>Continuă spre Confirmare</span>
+                <span>Continue to Confirmation</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Button>
             </div>
@@ -350,19 +351,19 @@ export function ImportRosterDialog({
 
             <div className="space-y-1.5 max-w-md mx-auto">
               <h3 className="font-serif text-xl font-semibold text-foreground">
-                Gata de import
+                Ready to Import
               </h3>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Ești pe cale să adaugi{' '}
+                You are about to add{' '}
                 <span className="font-bold text-foreground font-mono">
-                  {preview.valid.length} studenți
+                  {preview.valid.length} students
                 </span>{' '}
-                în catalogul oficial al cursului{' '}
+                to the official roster for course{' '}
                 <span className="font-semibold text-foreground">{courseName}</span>.
               </p>
               {replaceExisting && (
                 <p className="text-xs text-danger font-medium">
-                  Atenție: Opțiunea de înlocuire completă este activată.
+                  Warning: Full replace option is enabled.
                 </p>
               )}
             </div>
@@ -374,7 +375,7 @@ export function ImportRosterDialog({
                 disabled={committing}
                 onClick={() => setCurrentStep(1)}
               >
-                Înapoi la Validare
+                Back to Validation
               </Button>
               <Button
                 variant="accent"
@@ -382,7 +383,7 @@ export function ImportRosterDialog({
                 loading={committing}
                 onClick={handleCommit}
               >
-                <span>Confirmă și Importă {preview.valid.length} Studenți</span>
+                <span>Confirm and Import {preview.valid.length} Students</span>
               </Button>
             </div>
           </div>

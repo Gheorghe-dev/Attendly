@@ -34,9 +34,22 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         orderBy: [{ group: 'asc' }, { name: 'asc' }],
       });
 
-      const attendance = new Map<string, { verifiedAt: Date | null; status: string }>();
+      const attendance = new Map<
+        string,
+        {
+          verifiedAt: Date | null;
+          status: string;
+          distanceMeters?: number | null;
+          studentCity?: string | null;
+        }
+      >();
       for (const rec of s.attendance) {
-        attendance.set(rec.student.email, { verifiedAt: rec.verifiedAt, status: rec.status });
+        attendance.set(rec.student.email, {
+          verifiedAt: rec.verifiedAt,
+          status: rec.status,
+          distanceMeters: rec.distanceMeters,
+          studentCity: rec.studentCity,
+        });
       }
       return { sessionName: s.name, courseName: course.name, sessionDate: s.date, students, attendance };
     })

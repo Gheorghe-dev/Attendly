@@ -56,9 +56,9 @@ export function AppShell({ children, user }: AppShellProps) {
 
   const navItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: 'Cursuri', href: '/dashboard/courses', icon: BookOpen },
-    { label: 'Sesiuni', href: '/dashboard/sessions', icon: Layers },
-    { label: 'Setări', href: '/dashboard/settings', icon: Settings },
+    { label: 'Courses', href: '/dashboard/courses', icon: BookOpen },
+    { label: 'Sessions', href: '/dashboard/sessions', icon: Layers },
+    { label: 'Settings', href: '/dashboard/settings', icon: Settings },
   ];
 
   const isActive = (href: string) => {
@@ -73,7 +73,7 @@ export function AppShell({ children, user }: AppShellProps) {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded-input focus:shadow-md"
       >
-        Sari la conținutul principal
+        Skip to main content
       </a>
 
       <div className="flex-1 flex w-full">
@@ -85,10 +85,16 @@ export function AppShell({ children, user }: AppShellProps) {
           )}
         >
           {/* Brand header */}
-          <div className="h-16 px-4 flex items-center justify-between border-b border-border">
+          <div
+            className={cn(
+              'h-16 flex items-center border-b border-border transition-all',
+              collapsed ? 'justify-center px-2' : 'justify-between px-4'
+            )}
+          >
             <Logo
               size={collapsed ? 'sm' : 'md'}
               showTagline={!collapsed}
+              collapsed={collapsed}
               href="/dashboard"
             />
           </div>
@@ -134,14 +140,14 @@ export function AppShell({ children, user }: AppShellProps) {
                 collapsed && 'justify-center p-1.5'
               )}
             >
-              <Avatar name={user?.name || 'Profesor'} size="sm" />
+              <Avatar name={user?.name || 'Instructor'} size="sm" />
               {!collapsed && (
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-foreground truncate">
-                    {user?.name || 'Profesor'}
+                    {user?.name || 'Instructor'}
                   </p>
                   <p className="text-[10px] font-mono text-muted-foreground truncate">
-                    {user?.email || 'prof@univ.ro'}
+                    {user?.email || 'instructor@university.edu'}
                   </p>
                 </div>
               )}
@@ -155,17 +161,17 @@ export function AppShell({ children, user }: AppShellProps) {
                   'flex items-center gap-2 text-[11px] text-muted-foreground hover:text-danger p-2 rounded-input hover:bg-danger-soft transition-colors w-full',
                   collapsed && 'justify-center'
                 )}
-                title="Deconectare"
+                title="Sign Out"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                {!collapsed && <span>Deconectare</span>}
+                {!collapsed && <span>Sign Out</span>}
               </button>
 
               <button
                 type="button"
                 onClick={toggleCollapsed}
                 className="hidden lg:flex items-center justify-center p-1.5 rounded-input text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                title={collapsed ? 'Extinde bara laterală' : 'Restrânge bara laterală'}
+                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
                 {collapsed ? (
                   <ChevronRight className="w-4 h-4" />
@@ -220,13 +226,13 @@ export function AppShell({ children, user }: AppShellProps) {
 
               <div className="pt-4 border-t border-border space-y-3">
                 <div className="flex items-center gap-3">
-                  <Avatar name={user?.name || 'Profesor'} size="sm" />
+                  <Avatar name={user?.name || 'Instructor'} size="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-foreground truncate">
-                      {user?.name || 'Profesor'}
+                      {user?.name || 'Instructor'}
                     </p>
                     <p className="text-[11px] font-mono text-muted-foreground truncate">
-                      {user?.email || 'prof@univ.ro'}
+                      {user?.email || 'instructor@university.edu'}
                     </p>
                   </div>
                 </div>
@@ -238,7 +244,7 @@ export function AppShell({ children, user }: AppShellProps) {
                   onClick={() => signOut({ callbackUrl: '/login' })}
                 >
                   <LogOut className="w-3.5 h-3.5 mr-2" />
-                  <span>Deconectare</span>
+                  <span>Sign Out</span>
                 </Button>
               </div>
             </div>
@@ -254,14 +260,10 @@ export function AppShell({ children, user }: AppShellProps) {
                 type="button"
                 onClick={() => setMobileOpen(true)}
                 className="lg:hidden p-2 rounded-input text-muted-foreground hover:text-foreground hover:bg-muted"
-                aria-label="Deschide meniul"
+                aria-label="Open menu"
               >
                 <Menu className="w-4 h-4" />
               </button>
-
-              <div className="text-xs font-mono text-muted-foreground hidden sm:block">
-                Universitatea Politehnica · Portal Academic
-              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -270,7 +272,7 @@ export function AppShell({ children, user }: AppShellProps) {
               <Link href="/dashboard/courses">
                 <Button variant="accent" size="sm">
                   <PlusCircle className="w-3.5 h-3.5" />
-                  <span>Sesiune nouă</span>
+                  <span>New Session</span>
                 </Button>
               </Link>
             </div>

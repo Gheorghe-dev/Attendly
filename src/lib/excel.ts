@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { formatDistance } from '@/lib/distance';
 
 export interface StudentRow {
   name: string;
@@ -236,7 +237,15 @@ export async function buildAttendanceExcel({
   sessionName,
 }: {
   students: Array<{ name: string; email: string; group: string }>;
-  attendance: Map<string, { verifiedAt: Date | null; status: string }>;
+  attendance: Map<
+    string,
+    {
+      verifiedAt: Date | null;
+      status: string;
+      distanceMeters?: number | null;
+      studentCity?: string | null;
+    }
+  >;
   courseName: string;
   sessionDate: Date;
   sessionName: string;
@@ -252,6 +261,7 @@ export async function buildAttendanceExcel({
     { header: 'Class Date', key: 'date', width: 15 },
     { header: 'Attendance Status', key: 'status', width: 20 },
     { header: 'Registration Date & Time', key: 'registeredAt', width: 25 },
+    { header: 'Scan Distance', key: 'distance', width: 24 },
   ];
 
   // Style header
@@ -269,6 +279,10 @@ export async function buildAttendanceExcel({
   for (const student of students) {
     const rec = attendance.get(student.email);
     const isPresent = rec?.status === 'verified';
+    const distanceDisplay = isPresent
+      ? formatDistance(rec?.distanceMeters)
+      : '—';
+
     const row = sheet.addRow({
       name: student.name,
       email: student.email,
@@ -279,6 +293,7 @@ export async function buildAttendanceExcel({
       registeredAt: rec?.verifiedAt
         ? new Date(rec.verifiedAt).toLocaleString('en-GB')
         : '',
+      distance: distanceDisplay,
     });
     const statusCell = row.getCell('status');
     statusCell.fill = {
@@ -289,7 +304,7 @@ export async function buildAttendanceExcel({
     statusCell.font = { color: { argb: isPresent ? 'FF065F46' : 'FF991B1B' } };
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'G1' };
+  sheet.autoFilter = { from: 'A1', to: 'H1' };
 
   const arrayBuffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(arrayBuffer);
@@ -300,7 +315,15 @@ export async function buildMultiSessionExcel(sessions: Array<{
   courseName: string;
   sessionDate: Date;
   students: Array<{ name: string; email: string; group: string }>;
-  attendance: Map<string, { verifiedAt: Date | null; status: string }>;
+  attendance: Map<
+    string,
+    {
+      verifiedAt: Date | null;
+      status: string;
+      distanceMeters?: number | null;
+      studentCity?: string | null;
+    }
+  >;
 }>): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('All Sessions');
@@ -314,6 +337,7 @@ export async function buildMultiSessionExcel(sessions: Array<{
     { header: 'Class Date', key: 'date', width: 15 },
     { header: 'Attendance Status', key: 'status', width: 20 },
     { header: 'Registration Date & Time', key: 'registeredAt', width: 25 },
+    { header: 'Scan Distance', key: 'distance', width: 24 },
   ];
 
   const headerRow = sheet.getRow(1);
@@ -325,6 +349,10 @@ export async function buildMultiSessionExcel(sessions: Array<{
     for (const student of s.students) {
       const rec = s.attendance.get(student.email);
       const isPresent = rec?.status === 'verified';
+      const distanceDisplay = isPresent
+        ? formatDistance(rec?.distanceMeters)
+        : '—';
+
       const row = sheet.addRow({
         name: student.name,
         email: student.email,
@@ -336,6 +364,7 @@ export async function buildMultiSessionExcel(sessions: Array<{
         registeredAt: rec?.verifiedAt
           ? new Date(rec.verifiedAt).toLocaleString('en-GB')
           : '',
+        distance: distanceDisplay,
       });
       const statusCell = row.getCell('status');
       statusCell.fill = {
@@ -347,7 +376,7 @@ export async function buildMultiSessionExcel(sessions: Array<{
     }
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'H1' };
+  sheet.autoFilter = { from: 'A1', to: 'I1' };
   const arrayBuffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(arrayBuffer);
 }

@@ -1,5 +1,5 @@
 {
-  "name": "qr-attendance-system",
+  "name": "attendly",
   "version": "0.1.0",
   "private": true,
   "main": "electron/main.js",
@@ -10,14 +10,43 @@
     "tunnel": "npx --yes localtunnel --port 3000",
     "desktop": "electron .",
     "desktop:start": "npm run build && electron .",
+    "desktop:build": "electron-builder --win",
+    "desktop:pack": "electron-builder --dir",
     "lint": "next lint",
     "test": "jest --passWithNoTests",
-    "db:seed": "tsx seed/students-sample.ts",
+    "db:seed": "tsx prisma/seed.ts",
     "db:excel": "tsx seed/create-sample-excel.ts",
     "db:demo": "tsx seed/create-demo-excel.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "docs:pdf": "node scripts/generate-pdf.js"
+    "docs:pdf": "node scripts/generate-pdf.js",
+    "shortcuts": "node scripts/create-shortcuts.js"
+  },
+  "build": {
+    "appId": "ro.attendly.desktop",
+    "productName": "Attendly",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "attendly.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Attendly",
+      "createDesktopShortcut": true
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "attendly.ico",
+      "package.json"
+    ]
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -11,7 +11,6 @@ import { Card } from '@/components/ui/Card';
 import {
   BookOpen,
   Users,
-  CheckCircle2,
   Calendar,
   Radio,
   ArrowRight,
@@ -25,12 +24,12 @@ export default async function DashboardPage() {
   const hour = new Date().getHours();
   const greeting =
     hour < 12
-      ? 'Bună dimineața'
+      ? 'Good morning'
       : hour < 18
-      ? 'Bună ziua'
-      : 'Bună seara';
+      ? 'Good afternoon'
+      : 'Good evening';
 
-  const todayStr = new Intl.DateTimeFormat('ro-RO', {
+  const todayStr = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -45,7 +44,9 @@ export default async function DashboardPage() {
         _count: { select: { students: true, sessions: true } },
         sessions: {
           orderBy: { date: 'desc' },
-          take: 1,
+          include: {
+            _count: { select: { attendance: { where: { status: 'verified' } } } },
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -70,19 +71,6 @@ export default async function DashboardPage() {
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
   const sessionsThisWeek = sessions.filter((s) => new Date(s.date) >= oneWeekAgo).length;
 
-  // Average attendance rate across last 7 sessions
-  const last7Sessions = sessions.slice(0, 7).reverse();
-  const sparklineData = last7Sessions.map((s) => {
-    // Estimating attendance rate for session
-    return s.attendance.length;
-  });
-
-  const totalPossible = sessions.reduce((sum, s) => sum + s.attendance.length, 0);
-  const averageAttendance =
-    sessions.length > 0 && totalStudents > 0
-      ? Math.min(100, Math.round((totalPossible / (sessions.length * Math.max(1, totalStudents / Math.max(1, courses.length)))) * 100))
-      : 85;
-
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       {/* ── Top Academic Greeting ────────────────────────────────────── */}
@@ -92,10 +80,10 @@ export default async function DashboardPage() {
             {todayStr}
           </p>
           <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
-            {greeting}, {session.user.name || 'Domnule Profesor'}
+            {greeting}, {session.user.name || 'Professor'}
           </h1>
           <p className="text-xs text-muted-foreground">
-            Panou academic centralizat pentru gestionarea prezenței la cursuri și laboratoare.
+            Centralized academic dashboard for managing course and laboratory attendance.
           </p>
         </div>
 
@@ -103,6 +91,20 @@ export default async function DashboardPage() {
           <CreateCourseDialog />
         </div>
       </div>
+
+      {/* ── Demo Account Fresh Start Notice ─────────────────────────── */}
+      {session.user.email === 'prof@university.edu' && courses.length === 0 && (
+        <Card className="p-4 rounded-card border border-accent/30 bg-accent-soft/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-0.5">
+            <span className="font-semibold text-foreground flex items-center gap-1.5 font-sans">
+              🎓 Demo Account (Clean Slate)
+            </span>
+            <p className="text-muted-foreground text-[11px]">
+              This demo account acts like a brand-new instructor profile. Click <strong>+ New Course</strong> above to create your first course and test the Excel roster import!
+            </p>
+          </div>
+        </Card>
+      )}
 
       {/* ── Prominent Active Session Card (if any session is open) ───── */}
       {activeSessions.length > 0 && (
@@ -112,18 +114,18 @@ export default async function DashboardPage() {
               <div className="flex items-center gap-2.5">
                 <LiveBadge isOpen={true} />
                 <span className="text-xs font-mono font-semibold text-accent uppercase tracking-wider">
-                  Sesiune Activă în Desfășurare
+                  Active Session in Progress
                 </span>
               </div>
               <h2 className="font-serif text-xl sm:text-2xl font-semibold text-foreground">
                 {activeSessions[0].name}
               </h2>
               <p className="text-xs text-muted-foreground">
-                Curs:{' '}
+                Course:{' '}
                 <span className="font-medium text-foreground">
                   {activeSessions[0].course.name}
                 </span>{' '}
-                · Cod QR proiectat în amfiteatru · {activeSessions[0].attendance.length} studenți prezenți
+                · {activeSessions[0].classroom ? `Classroom ${activeSessions[0].classroom}` : 'QR code projected'} · {activeSessions[0].attendance.length} students present
               </p>
             </div>
 
@@ -131,7 +133,7 @@ export default async function DashboardPage() {
               <Link href={`/dashboard/sessions/${activeSessions[0].id}`}>
                 <Button variant="accent" size="md" className="shadow-md">
                   <Radio className="w-4 h-4 animate-pulse" />
-                  <span>Deschide Monitorul Live</span>
+                  <span>Open Live Monitor</span>
                   <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </Link>
@@ -140,32 +142,25 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* ── 4 StatCards Grid ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── StatCards Grid ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
-          label="Cursuri Active"
+          label="Active Courses"
           value={courses.length}
-          context="Înregistrate în semestru"
+          context="Enrolled this semester"
           icon={<BookOpen className="w-4 h-4" />}
         />
         <StatCard
-          label="Total Studenți"
+          label="Total Students"
           value={totalStudents}
-          context="Înscriși în cataloage"
+          context="Registered in rosters"
           icon={<Users className="w-4 h-4" />}
         />
         <StatCard
-          label="Sesiuni Săptămâna Asta"
+          label="Sessions This Week"
           value={sessionsThisWeek}
-          context="Cursuri și laboratoare"
+          context="Lectures and labs"
           icon={<Calendar className="w-4 h-4" />}
-        />
-        <StatCard
-          label="Rată Medie Prezență"
-          value={`${averageAttendance}%`}
-          context="Ultimele 7 sesiuni"
-          icon={<CheckCircle2 className="w-4 h-4" />}
-          sparklineData={sparklineData.length >= 2 ? sparklineData : [80, 85, 82, 88, 86]}
         />
       </div>
 
@@ -174,28 +169,32 @@ export default async function DashboardPage() {
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <h2 className="font-serif text-lg font-semibold tracking-tight text-foreground">
-              Cursurile Mele
+              My Courses
             </h2>
             <p className="text-xs text-muted-foreground">
-              Selectează un curs pentru a administra catalogul, a importa fișiere Excel sau a lansa sesiuni.
+              Select a course to manage its roster, import Excel files, or launch attendance sessions.
             </p>
           </div>
           <span className="text-xs font-mono text-muted-foreground">
-            {courses.length} {courses.length === 1 ? 'curs' : 'cursuri'}
+            {courses.length} {courses.length === 1 ? 'course' : 'courses'}
           </span>
         </div>
 
         {courses.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="w-6 h-6 text-accent" />}
-            title="Niciun curs încă"
-            description="Creează primul curs universitar pentru a începe importul catalogului de studenți și generarea codurilor QR de prezență."
+            title="No courses yet"
+            description="Create your first course to start importing student rosters and generating attendance QR codes."
             action={<CreateCourseDialog />}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {courses.map((course) => {
               const lastDate = course.sessions[0]?.date || null;
+              const totalAttended = course.sessions.reduce((acc, s) => acc + s._count.attendance, 0);
+              const totalPossible = course._count.sessions * course._count.students;
+              const rate = totalPossible > 0 ? Math.min(100, Math.round((totalAttended / totalPossible) * 100)) : 0;
+
               return (
                 <CourseCard
                   key={course.id}
@@ -205,7 +204,7 @@ export default async function DashboardPage() {
                   studentCount={course._count.students}
                   sessionCount={course._count.sessions}
                   lastSessionDate={lastDate}
-                  attendanceRate={88}
+                  attendanceRate={rate}
                 />
               );
             })}

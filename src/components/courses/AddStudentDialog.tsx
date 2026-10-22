@@ -47,11 +47,11 @@ export function AddStudentDialog({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Nu s-a putut adăuga studentul.');
+        setError(data.error || 'Failed to add student.');
         return;
       }
 
-      toast.success(`Studentul ${name} a fost adăugat.`);
+      toast.success(`Student ${name} has been added.`);
       setName('');
       setEmail('');
       setGroup('');
@@ -59,7 +59,7 @@ export function AddStudentDialog({
       onClose();
       router.refresh();
     } catch {
-      setError('Eroare de rețea.');
+      setError('Network error.');
     } finally {
       setLoading(false);
     }
@@ -81,8 +81,8 @@ export function AddStudentDialog({
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <CardTitle>Adaugă Student Manual</CardTitle>
-              <CardDescription>Înregistrează un student în catalogul acestui curs.</CardDescription>
+              <CardTitle>Add Student Manually</CardTitle>
+              <CardDescription>Register a student in this course roster.</CardDescription>
             </div>
           </div>
           <button
@@ -103,38 +103,38 @@ export function AddStudentDialog({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Nume complet student"
+            label="Student Full Name"
             required
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="ex. Popescu Andrei"
+            placeholder="e.g. John Smith"
           />
 
           <Input
-            label="Email universitar"
+            label="University Email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="ex. andrei.popescu@student.univ.ro"
+            placeholder="e.g. john.smith@university.edu"
           />
 
           <div className="space-y-1.5 text-left">
             <label className="block text-xs font-medium text-foreground">
-              Grupă sau subgrupă
+              Group or Subgroup
             </label>
             <input
               type="text"
               required
               value={group}
               onChange={(e) => setGroup(e.target.value)}
-              placeholder="ex. AIA 3.3A sau ELA 2.2 A"
+              placeholder="e.g. CS 3.1A or ELA 2.2A"
               className="flex min-h-[44px] w-full rounded-input border border-input bg-card px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:outline-none transition-all font-mono"
             />
             {existingGroups.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="text-[10px] text-muted-foreground mr-1">Sugestii:</span>
+                <span className="text-[10px] text-muted-foreground mr-1">Suggestions:</span>
                 {existingGroups.slice(0, 5).map((g) => (
                   <button
                     key={g}
@@ -157,7 +157,7 @@ export function AddStudentDialog({
               disabled={loading}
               onClick={onClose}
             >
-              Anulează
+              Cancel
             </Button>
             <Button
               type="submit"
@@ -165,7 +165,7 @@ export function AddStudentDialog({
               size="sm"
               loading={loading}
             >
-              Salvează Studentul
+              Save Student
             </Button>
           </div>
         </form>

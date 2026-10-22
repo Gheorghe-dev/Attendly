@@ -22,15 +22,15 @@ export function SettingsForm() {
     setSuccess('');
 
     if (next !== confirm) {
-      setError('Noua parolă nu corespunde cu confirmarea.');
+      setError('New password does not match confirmation.');
       return;
     }
     if (next.length < 8) {
-      setError('Noua parolă trebuie să aibă cel puțin 8 caractere.');
+      setError('New password must be at least 8 characters long.');
       return;
     }
     if (current === next) {
-      setError('Noua parolă trebuie să difere de parola actuală.');
+      setError('New password must differ from current password.');
       return;
     }
 
@@ -43,16 +43,16 @@ export function SettingsForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? 'Nu s-a putut actualiza parola.');
+        setError(data.error ?? 'Failed to update password.');
         return;
       }
-      setSuccess('Parola a fost actualizată cu succes. Vă rugăm să o folosiți la următoarea autentificare.');
-      toast.success('Parola de acces a fost modificată.');
+      setSuccess('Password updated successfully. Please use it for your next sign-in.');
+      toast.success('Access password has been updated.');
       setCurrent('');
       setNext('');
       setConfirm('');
     } catch {
-      setError('Eroare de conexiune la server.');
+      setError('Server connection error.');
     } finally {
       setBusy(false);
     }
@@ -65,9 +65,9 @@ export function SettingsForm() {
           <Lock className="w-4 h-4" />
         </div>
         <div>
-          <CardTitle className="text-base">Securitate și Credențiale</CardTitle>
+          <CardTitle className="text-base">Security &amp; Credentials</CardTitle>
           <CardDescription>
-            Modificați parola de acces pentru panoul de control academic.
+            Update the access password for your instructor account.
           </CardDescription>
         </div>
       </div>
@@ -89,7 +89,7 @@ export function SettingsForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
           type={showPw ? 'text' : 'password'}
-          label="Parola actuală"
+          label="Current password"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
           required
@@ -99,25 +99,25 @@ export function SettingsForm() {
 
         <Input
           type={showPw ? 'text' : 'password'}
-          label="Parola nouă"
+          label="New password"
           value={next}
           onChange={(e) => setNext(e.target.value)}
           required
           minLength={8}
           autoComplete="new-password"
-          placeholder="Minim 8 caractere"
-          helperText="Recomandat: combinație de litere mari, mici și cifre."
+          placeholder="Minimum 8 characters"
+          helperText="Recommended: combination of uppercase, lowercase, and numbers."
         />
 
         <Input
           type={showPw ? 'text' : 'password'}
-          label="Confirmă noua parolă"
+          label="Confirm new password"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           required
           minLength={8}
           autoComplete="new-password"
-          placeholder="Reintroduceți noua parolă"
+          placeholder="Re-enter new password"
         />
 
         <div className="flex items-center justify-between pt-1">
@@ -131,7 +131,7 @@ export function SettingsForm() {
             ) : (
               <Eye className="w-3.5 h-3.5" />
             )}
-            <span>{showPw ? 'Ascunde caracterele parolei' : 'Afișează caracterele parolei'}</span>
+            <span>{showPw ? 'Hide password characters' : 'Show password characters'}</span>
           </button>
         </div>
 
@@ -144,7 +144,7 @@ export function SettingsForm() {
             className="w-full sm:w-auto"
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Actualizează Parola</span>
+            <span>Update Password</span>
           </Button>
         </div>
       </form>

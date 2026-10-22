@@ -55,6 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     return NextResponse.json({
       imported,
+      importedCount: imported,
       skipped,
       errors: parsed.errors,
       duplicates: parsed.duplicates,

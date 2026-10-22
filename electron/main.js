@@ -1,12 +1,26 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { spawn, exec } = require('child_process');
 
-const PORT = 3000;
+// Disable hardware acceleration to eliminate Windows GPU process crash (exit code -1073741819 / 0xC0000005)
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('no-sandbox');
+
+const ROOT_DIR = path.resolve(__dirname, '..');
+const PORT = process.env.PORT || 3000;
 const SERVER_URL = `http://127.0.0.1:${PORT}`;
-const TUNNEL_FILE = path.join(process.cwd(), '.tunnel_url');
+const TUNNEL_FILE = path.join(ROOT_DIR, '.tunnel_url');
+
+// Set Application Name and Windows User Model ID
+app.setName('Attendly');
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.attendly.app');
+}
 
 let mainWindow = null;
 let splashWindow = null;
@@ -23,15 +37,17 @@ if (!gotTheLock) {
   process.exit(0);
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
+    } else {
+      createMainWindow();
     }
   });
 }
 
-function checkServerReady(timeoutMs = 1200) {
+function checkServerReady(timeoutMs = 1500) {
   return new Promise((resolve) => {
     const req = http.get(`${SERVER_URL}/api/health`, (res) => {
       resolve(res.statusCode === 200 || res.statusCode === 307 || res.statusCode === 302);
@@ -47,9 +63,10 @@ function checkServerReady(timeoutMs = 1200) {
 function freePort(port = PORT) {
   return new Promise((resolve) => {
     if (process.platform === 'win32') {
-      exec(`for /f "tokens=5" %P in ('netstat -aon ^| findstr :${port} ^| findstr LISTENING 2^>nul') do taskkill /F /PID %P >nul 2>&1`, () => {
-        resolve();
-      });
+      exec(
+        `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
+        () => resolve()
+      );
     } else {
       exec(`lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1`, () => {
         resolve();
@@ -68,22 +85,30 @@ async function startServer() {
   await freePort(PORT);
   console.log('[Electron] Starting Next.js server on port', PORT);
 
-  const isProd = fs.existsSync(path.join(process.cwd(), '.next', 'BUILD_ID'));
-  const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const args = isProd ? ['start'] : ['run', 'dev'];
+  const nextBin = path.join(ROOT_DIR, 'node_modules', 'next', 'dist', 'bin', 'next');
+  const isProd = fs.existsSync(path.join(ROOT_DIR, '.next', 'BUILD_ID'));
+  const args = isProd
+    ? [nextBin, 'start', '-H', '0.0.0.0', '-p', String(PORT)]
+    : [nextBin, 'dev', '-H', '0.0.0.0', '-p', String(PORT)];
 
-  const proc = spawn(cmd, args, {
-    cwd: process.cwd(),
-    shell: true,
+  const proc = spawn('node', args, {
+    cwd: ROOT_DIR,
+    shell: false,
     windowsHide: true,
     env: { ...process.env, PORT: String(PORT) },
   });
 
   proc.stdout?.on('data', (d) => {
     const msg = d.toString();
-    if (msg.includes('Ready') || msg.includes('Local:')) {
-      splashWindow?.webContents?.send('status-update', 'Server is ready! Loading dashboard…');
+    if (msg.includes('Ready') || msg.includes('Local:') || msg.includes('✓')) {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('status-update', 'Server is ready! Loading dashboard…');
+      }
     }
+  });
+
+  proc.stderr?.on('data', (d) => {
+    console.error('[Next.js stderr]:', d.toString());
   });
 
   return proc;
@@ -95,7 +120,8 @@ function startCloudflareTunnel() {
   } catch {}
 
   const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://localhost:${PORT}`], {
+  const proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+    cwd: ROOT_DIR,
     shell: true,
     windowsHide: true,
   });
@@ -118,6 +144,26 @@ function startCloudflareTunnel() {
   return proc;
 }
 
+function getAppIcon() {
+  const possiblePaths = [
+    path.join(ROOT_DIR, 'attendly.ico'),
+    path.join(ROOT_DIR, 'public', 'emblem.png'),
+    path.join(ROOT_DIR, 'src', 'app', 'favicon.ico'),
+    path.join(ROOT_DIR, 'src', 'app', 'icon.png'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const img = nativeImage.createFromPath(p);
+        if (!img.isEmpty()) return img;
+      } catch (err) {
+        console.warn('[Electron] Could not load icon from', p, err.message);
+      }
+    }
+  }
+  return undefined;
+}
+
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
     width: 480,
@@ -127,6 +173,7 @@ function createSplashWindow() {
     center: true,
     transparent: false,
     alwaysOnTop: true,
+    title: 'Attendly',
     icon: getAppIcon(),
     webPreferences: {
       nodeIntegration: true,
@@ -140,21 +187,20 @@ function createSplashWindow() {
   });
 }
 
-function getAppIcon() {
-  const icoPath = path.join(process.cwd(), 'src', 'app', 'favicon.ico');
-  if (fs.existsSync(icoPath)) {
-    return nativeImage.createFromPath(icoPath);
-  }
-  return undefined;
-}
-
 function createMainWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 960,
     minHeight: 640,
-    title: 'QR Attendance System',
+    title: 'Attendly',
     show: false,
     backgroundColor: '#0f172a',
     icon: getAppIcon(),
@@ -165,6 +211,34 @@ function createMainWindow() {
       sandbox: false,
     },
   });
+
+  const showMainWindow = () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      try { splashWindow.close(); } catch {}
+      splashWindow = null;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+      }
+      mainWindow.focus();
+    }
+  };
+
+  mainWindow.once('ready-to-show', showMainWindow);
+  mainWindow.webContents.once('did-finish-load', showMainWindow);
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.warn(`[Electron] did-fail-load: ${errorCode} ${errorDescription} on ${validatedURL}`);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(SERVER_URL);
+      }
+    }, 1000);
+  });
+
+  // Failsafe: if neither ready-to-show nor did-finish-load fired within 3.5s, force show
+  setTimeout(showMainWindow, 3500);
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -182,27 +256,13 @@ function createMainWindow() {
     }
   });
 
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
-  });
-
   mainWindow.on('closed', () => {
     mainWindow = null;
+    cleanup();
+    app.quit();
   });
 
   mainWindow.loadURL(SERVER_URL);
-
-  mainWindow.webContents.once('did-finish-load', () => {
-    if (splashWindow) {
-      splashWindow.close();
-      splashWindow = null;
-    }
-    mainWindow.show();
-    mainWindow.focus();
-  });
 }
 
 function buildNativeMenu() {
@@ -266,7 +326,7 @@ function buildNativeMenu() {
         {
           label: 'Copy Public Tunnel URL',
           click: () => {
-            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8') : null);
+            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
             if (url) {
               const { clipboard } = require('electron');
               clipboard.writeText(url);
@@ -276,7 +336,7 @@ function buildNativeMenu() {
         {
           label: 'Open Tunnel in Browser',
           click: () => {
-            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8') : null);
+            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
             if (url) shell.openExternal(url);
           },
         },
@@ -297,25 +357,25 @@ function buildNativeMenu() {
       label: 'Help',
       submenu: [
         {
-          label: 'Documentation (DOCS.md)',
+          label: 'Documentation (USER_GUIDE.md)',
           click: () => {
-            const docsPath = path.join(process.cwd(), 'DOCS.md');
+            const docsPath = path.join(ROOT_DIR, 'USER_GUIDE.md');
             if (fs.existsSync(docsPath)) shell.openPath(docsPath);
           },
         },
         {
           label: 'Open App Directory',
-          click: () => shell.openPath(process.cwd()),
+          click: () => shell.openPath(ROOT_DIR),
         },
         { type: 'separator' },
         {
-          label: 'About QR Attendance System',
+          label: 'About Attendly',
           click: () => {
             const { dialog } = require('electron');
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'QR Attendance System',
-              message: 'QR Attendance System — Desktop Edition',
+              title: 'Attendly',
+              message: 'Attendly — Desktop Edition',
               detail: 'Version 0.1.0\nNext.js 14 + Electron Desktop Runtime\nZero-config local server & Cloudflare tunnel.\nDesigned for university lectures & labs.',
             });
           },
@@ -334,7 +394,7 @@ function updateTrayMenu() {
   const currentTunnel = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: '🎓 QR Attendance Desktop', enabled: false },
+    { label: '🎓 Attendly Desktop', enabled: false },
     { label: `Status: Running on Port ${PORT}`, enabled: false },
     {
       label: currentTunnel ? `Tunnel: ${currentTunnel}` : 'Tunnel: Connecting…',
@@ -347,9 +407,11 @@ function updateTrayMenu() {
     {
       label: 'Show Dashboard Window',
       click: () => {
-        if (mainWindow) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
           mainWindow.focus();
+        } else {
+          createMainWindow();
         }
       },
     },
@@ -362,13 +424,14 @@ function updateTrayMenu() {
       label: 'Quit Application',
       click: () => {
         isQuitting = true;
+        cleanup();
         app.quit();
       },
     },
   ]);
 
   tray.setContextMenu(contextMenu);
-  tray.setToolTip('QR Attendance System (Port 3000)');
+  tray.setToolTip('Attendly (Port 3000)');
 }
 
 function setupTray() {
@@ -378,9 +441,11 @@ function setupTray() {
   try {
     tray = new Tray(icon);
     tray.on('double-click', () => {
-      if (mainWindow) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show();
         mainWindow.focus();
+      } else {
+        createMainWindow();
       }
     });
     updateTrayMenu();
@@ -403,31 +468,53 @@ ipcMain.on('window-close', () => mainWindow?.close());
 
 // App Lifecycle
 app.whenReady().then(async () => {
+  // Allow geolocation and essential web permissions on PC without blocking
+  if (session && session.defaultSession) {
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+      callback(true);
+    });
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+      return true;
+    });
+  }
+
   createSplashWindow();
   buildNativeMenu();
   setupTray();
 
-  splashWindow?.webContents?.send('status-update', 'Checking server status…');
+  // If server is already active, launch main window immediately
+  const isAlreadyReady = await checkServerReady(800);
+  if (isAlreadyReady) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('status-update', 'Connected! Loading Attendly…');
+    }
+    tunnelProcess = startCloudflareTunnel();
+    createMainWindow();
+    return;
+  }
+
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('status-update', 'Checking server status…');
+  }
   serverProcess = await startServer();
 
-  splashWindow?.webContents?.send('status-update', 'Starting Cloudflare worldwide tunnel…');
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('status-update', 'Starting Cloudflare worldwide tunnel…');
+  }
   tunnelProcess = startCloudflareTunnel();
 
   // Poll until Next.js is responding
   let ready = false;
-  for (let i = 0; i < 35; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 600));
     ready = await checkServerReady();
     if (ready) break;
-    splashWindow?.webContents?.send('status-update', `Connecting to local engine (${i + 1}s)…`);
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('status-update', `Connecting to local engine (${i + 1}s)…`);
+    }
   }
 
-  if (ready) {
-    createMainWindow();
-  } else {
-    splashWindow?.webContents?.send('status-update', 'Server start timed out. Check console logs.');
-    createMainWindow();
-  }
+  createMainWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
@@ -436,16 +523,22 @@ app.whenReady().then(async () => {
 });
 
 function cleanup() {
+  if (isQuitting) return;
   isQuitting = true;
   console.log('[Electron] Cleaning up child processes…');
   try {
     if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
   } catch {}
+  if (process.platform === 'win32') {
+    exec('taskkill /F /IM cloudflared.exe >nul 2>&1');
+  }
   if (tunnelProcess) {
     try { tunnelProcess.kill(); } catch {}
+    tunnelProcess = null;
   }
   if (serverProcess) {
     try { serverProcess.kill(); } catch {}
+    serverProcess = null;
   }
   freePort(PORT);
 }
@@ -455,8 +548,6 @@ app.on('before-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    cleanup();
-    app.quit();
-  }
+  cleanup();
+  app.quit();
 });

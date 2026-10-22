@@ -38,18 +38,18 @@ export function CreateCourseDialog({
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Nu s-a putut crea cursul.');
+        setError(data.error || 'Failed to create course.');
         return;
       }
 
-      toast.success(`Cursul "${name}" a fost creat.`);
+      toast.success(`Course "${name}" created.`);
       setOpen(false);
       setName('');
       setDescription('');
       router.refresh();
       router.push(`/dashboard/courses/${data.id}`);
     } catch {
-      setError('A apărut o eroare la salvare.');
+      setError('An error occurred while saving.');
     } finally {
       setLoading(false);
     }
@@ -62,7 +62,7 @@ export function CreateCourseDialog({
       ) : (
         <Button variant="accent" size="sm" onClick={() => setOpen(true)}>
           <Plus className="w-3.5 h-3.5" />
-          <span>Curs nou</span>
+          <span>New Course</span>
         </Button>
       )}
 
@@ -80,9 +80,9 @@ export function CreateCourseDialog({
                   <BookOpen className="w-5 h-5" />
                 </div>
                 <div>
-                  <CardTitle>Creează Curs Nou</CardTitle>
+                  <CardTitle>Create New Course</CardTitle>
                   <CardDescription>
-                    Definește o materie sau un modul universitar pentru acest semestru.
+                    Define a course or university module for this semester.
                   </CardDescription>
                 </div>
               </div>
@@ -104,24 +104,24 @@ export function CreateCourseDialog({
 
             <form onSubmit={handleCreate} className="space-y-4">
               <Input
-                label="Nume curs / disciplină"
+                label="Course Name / Title"
                 required
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="ex. Sisteme Distribuite (CS 301)"
-                helperText="Numele oficial al materiei sau acronimul din planul de învățământ."
+                placeholder="e.g. Distributed Systems (CS 301)"
+                helperText="The official course title or course code from syllabus."
               />
 
               <div className="space-y-1.5 text-left">
                 <label className="block text-xs font-medium text-foreground">
-                  Descriere sau detalii (opțional)
+                  Description or notes (optional)
                 </label>
                 <textarea
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="ex. Curs de an III, semestrul 2. Include 14 cursuri și 7 laboratoare practice."
+                  placeholder="e.g. Year 3, Semester 2. Includes 14 lectures and 7 lab sessions."
                   className="flex w-full rounded-input border border-input bg-card px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:outline-none transition-all"
                 />
               </div>
@@ -134,7 +134,7 @@ export function CreateCourseDialog({
                   disabled={loading}
                   onClick={() => setOpen(false)}
                 >
-                  Anulează
+                  Cancel
                 </Button>
                 <Button
                   type="submit"
@@ -142,7 +142,7 @@ export function CreateCourseDialog({
                   size="sm"
                   loading={loading}
                 >
-                  Creează Cursul
+                  Create Course
                 </Button>
               </div>
             </form>

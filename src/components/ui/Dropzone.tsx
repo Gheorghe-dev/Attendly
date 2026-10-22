@@ -21,7 +21,7 @@ export function Dropzone({
   onClear,
   error,
   className,
-  helper = 'Trage fișierul Excel (.xlsx) aici sau fă clic pentru a selecta de pe disc',
+  helper = 'Drag and drop your Excel roster file (.xlsx) here or click to browse',
 }: DropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -76,7 +76,7 @@ export function Dropzone({
             type="button"
             onClick={onClear}
             className="p-1.5 rounded-input text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            title="Elimină fișier"
+            title="Remove file"
           >
             <X className="w-4 h-4" />
           </button>
@@ -112,7 +112,7 @@ export function Dropzone({
       </div>
       <p className="text-xs font-medium text-foreground max-w-sm">{helper}</p>
       <p className="text-[11px] text-muted-foreground font-mono mt-1">
-        Formate acceptate: .xlsx, .xls (max. 10MB)
+        Accepted formats: .xlsx, .xls (max. 10MB)
       </p>
       {error && <p className="text-xs font-medium text-danger mt-2">{error}</p>}
     </div>

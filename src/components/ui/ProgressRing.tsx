@@ -27,7 +27,7 @@ export function ProgressRing({
       aria-valuenow={clamped}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Rată de prezență: ${clamped}%`}
+      aria-label={`Attendance rate: ${clamped}%`}
     >
       <svg width={size} height={size} className="transform -rotate-90">
         {/* Background track */}
