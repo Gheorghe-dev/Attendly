@@ -50,15 +50,15 @@ You can install Attendly on a new computer or migrate an existing installation:
 Keep a separate backup of the database. Do not replace a newer database without first backing it up.
 
 ### Method B: Download as a ZIP from GitHub
-1. On your new computer, go to your Attendly GitHub repository.
+1. On your new computer, go to [the Attendly GitHub repository](https://github.com/Gheorghe-dev/Attendly).
 2. Click the green **Code** button and select **Download ZIP**.
 3. Extract the ZIP file into a folder on your computer.
 
 ### Method C: Clone with Git
 Open your terminal (PowerShell, Command Prompt, or Terminal) and run:
 ```bash
-git clone https://github.com/Gheorghe-dev/QrAttendace.git
-cd QrAttendace
+git clone https://github.com/Gheorghe-dev/Attendly.git
+cd Attendly
 ```
 
 ---
@@ -67,12 +67,14 @@ cd QrAttendace
 
 Attendly only requires **one software prerequisite**:
 
-- **[Node.js](https://nodejs.org/)**: Install the current **LTS** release (Node.js 20 LTS is recommended) from the official website:
+- **[Node.js](https://nodejs.org/)**: Install Node.js 24 LTS from the official website:
   👉 **https://nodejs.org/**
 - Run the downloaded installer and accept the standard defaults.
 
 > [!TIP]
-> If your new computer has **Docker** installed, you don't even need Node.js! Skip straight to the Docker section in Chapter 4.
+> If your new computer has **Docker Desktop** (Windows/macOS) or Docker Engine with the Compose plugin (Linux), you don't need Node.js on the host; skip to the Docker section in Chapter 4.
+
+The server can run on Windows, macOS, or Linux. Phones and tablets can use Attendly in their browser after connecting to a running server; they do not install this GitHub repository as a native mobile app.
 
 ---
 
@@ -144,6 +146,8 @@ Then start Attendly:
 docker compose up -d
 ```
 Open **`http://localhost:3000`** in your browser.
+
+Docker Compose does not start a public tunnel. To generate QR links that phones on the same LAN can open, add `APP_URL` and `NEXTAUTH_URL` to `.env` with the server's LAN address (for example, `http://192.168.1.50:3000`), then restart the container. Access from outside that LAN requires a properly secured HTTPS setup.
 
 ---
 

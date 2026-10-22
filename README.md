@@ -87,9 +87,20 @@ Attendly is designed for instructors and academic teams who want a practical alt
 
 > **App vs. documentation site:** The optional static guide is in [`docs/`](docs/index.html). The app itself must run on your computer or server; GitHub Pages cannot host its database or API.
 
+### Install from GitHub
+
+You can install the Attendly server on a Windows, macOS, or Linux computer. Install [Node.js 24 LTS](https://nodejs.org/) first. You can either clone the repository with Git or download and extract the ZIP from the green **Code** button on [GitHub](https://github.com/Gheorghe-dev/Attendly).
+
+```bash
+git clone https://github.com/Gheorghe-dev/Attendly.git
+cd Attendly
+```
+
+The web interface also works in a modern browser on phones and tablets. Phones are client devices: they connect to a running Attendly server and do not install the Git repository as a native mobile app. To let student devices connect from other networks, start the optional tunnel from the host computer; its temporary public URL is only available while that tunnel is running. GitHub Pages hosts the guide, not the attendance application.
+
 ### Option A: Windows (One-Click)
 
-Attendly provides automated self-configuring Windows launchers:
+In the cloned or extracted project folder, run one of the Windows launchers:
 
 Before the first launch, create `.env` from `.env.example` if needed and replace the sample `NEXTAUTH_SECRET` with a unique value. Windows launchers copy the template but do not generate a replacement secret. See [TUTORIAL.md](TUTORIAL.md) for the exact steps.
 
@@ -109,17 +120,13 @@ Before the first launch, create `.env` from `.env.example` if needed and replace
 
 ### Option B: macOS & Linux
 
-Attendly includes native shell scripts for macOS and any Linux distribution:
+Attendly includes shell launchers for macOS and Linux:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/Gheorghe-dev/QrAttendace.git
-cd QrAttendace
-
-# 2. Make scripts executable
+# From inside the cloned or extracted Attendly folder:
 chmod +x start.sh stop.sh
 
-# 3. Launch Attendly
+# Launch Attendly
 ./start.sh
 ```
 `./start.sh` checks Node.js, creates `.env` from `.env.example` (and replaces its sample secret), installs dependencies if needed, initializes the database if missing, builds the app if needed, and starts the server and Cloudflare tunnel.
@@ -158,24 +165,28 @@ docker compose logs -f
 docker compose down
 ```
 
-Access Attendly in your browser at: **`http://localhost:3000`**
-All SQLite database files are persistently mounted in Docker volume `attendly-data`. Never commit the `.env` file.
+Access Attendly in your browser at: **`http://localhost:3000`**. Docker Compose does not start a public tunnel. To let phones on your local network scan working QR links, add `APP_URL=http://<host-LAN-IP>:3000` and `NEXTAUTH_URL=http://<host-LAN-IP>:3000` to `.env`, then restart Compose; use a trusted HTTPS URL and suitable network configuration for access from outside your LAN. All SQLite database files are persistently mounted in Docker volume `attendly-data`. Never commit the `.env` file.
 
 ---
 
 ### Option D: Developer / Manual CLI
 
-If you prefer running via standard Node.js package scripts:
+If you prefer running via standard Node.js package scripts, clone or extract the repository first and open a terminal in the project folder. Install Node.js 24 LTS. Use the commands for your terminal to copy the environment template:
 
 ```bash
 # 1. Install dependencies
-npm install
+npm ci
 
 # 2. Configure environment and replace the sample NEXTAUTH_SECRET
 cp .env.example .env
 # Generate a secret, then paste it into .env:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
 
+On Windows PowerShell, copy the template with `Copy-Item .env.example .env`, then generate a secret with the same `node -e` command above and replace the sample `NEXTAUTH_SECRET` value in `.env`.
+
+Continue in either terminal:
+```bash
 # 3. Initialize SQLite database schema
 npx prisma generate
 npx prisma db push

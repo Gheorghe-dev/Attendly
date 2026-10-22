@@ -4,10 +4,10 @@
   "description": "Self-hosted academic attendance management with QR check-ins, course rosters, and Excel reports.",
   "license": "MIT",
   "author": "Attendly Open Source Community",
-  "homepage": "https://github.com/Gheorghe-dev/QrAttendace",
+  "homepage": "https://github.com/Gheorghe-dev/Attendly",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Gheorghe-dev/QrAttendace.git"
+    "url": "https://github.com/Gheorghe-dev/Attendly.git"
   },
   "keywords": [
     "attendance",

@@ -29,8 +29,8 @@ Attendly is built using:
 ### Quick Start
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Gheorghe-dev/QrAttendace.git
-cd QrAttendace
+git clone https://github.com/Gheorghe-dev/Attendly.git
+cd Attendly
 
 # 2. Install dependencies
 npm install

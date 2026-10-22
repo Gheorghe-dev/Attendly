@@ -12,14 +12,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-build:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build --tag attendly:ci .
+
   test-and-build:
     name: Node ${{ matrix.node-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        node-version: [18.x, 20.x]
+        include:
+          - os: ubuntu-latest
+            node-version: 18.x
+          - os: ubuntu-latest
+            node-version: 20.x
+          - os: ubuntu-latest
+            node-version: 22.x
+          - os: ubuntu-latest
+            node-version: 24.x
+          - os: windows-latest
+            node-version: 22.x
+          - os: windows-latest
+            node-version: 24.x
+          - os: macos-latest
+            node-version: 22.x
+          - os: macos-latest
+            node-version: 24.x
 
     steps:
       - name: Check out repository
@@ -35,7 +60,7 @@ jobs:
         run: npm ci
 
       - name: Configure test environment
-        run: cp .env.example .env
+        run: node -e "require('node:fs').copyFileSync('.env.example', '.env')"
 
       - name: Generate Prisma Client
         run: npx prisma generate

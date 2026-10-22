@@ -6,7 +6,7 @@
 # ------------------------------------------------------------------------------
 # 1. Base Image
 # ------------------------------------------------------------------------------
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 
@@ -24,6 +24,8 @@ RUN npm ci
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ENV DATABASE_URL=file:./dev.db
+ENV NEXTAUTH_SECRET=attendly-build-only-placeholder
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 RUN npx prisma generate

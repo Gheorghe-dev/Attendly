@@ -59,6 +59,8 @@ docker compose up -d
 ```
 Access Attendly at **`http://localhost:3000`**. Data is persisted in the `attendly-data` volume.
 
+Create a root `.env` file containing a unique `NEXTAUTH_SECRET` before starting Docker Compose. Compose deliberately refuses to start without it. Docker does not create a public tunnel; to use QR check-ins from phones on the same LAN, also set `APP_URL` and `NEXTAUTH_URL` in `.env` to the server's LAN address (for example, `http://192.168.1.50:3000`) and restart the container. Use a properly secured HTTPS deployment for access outside the LAN.
+
 ### Mode 5: Lecture Hall Mode with Worldwide Mobile Tunnel
 For students to scan the QR code from their mobile phones across 4G/5G mobile data or any university Wi-Fi:
 - Run:
