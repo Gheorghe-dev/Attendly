@@ -3,27 +3,27 @@
  */
 
 export const PRESET_CLASSROOMS = [
-  'Sala 101',
-  'Sala 102',
-  'Sala 201',
-  'Amfiteatrul A1',
-  'Amfiteatrul A2',
+  'Room 101',
+  'Room 102',
+  'Room 201',
+  'Auditorium A1',
+  'Auditorium A2',
   'Lab 204',
   'Lab 302',
-  'C1',
-  'C2',
+  'Hall 1',
+  'Hall 2',
 ] as const;
 
-export const DEFAULT_CLASSROOM = 'Sala 101';
+export const DEFAULT_CLASSROOM = 'Room 101';
 
 /**
  * Converts a classroom name into a clean, predictable URL slug bound to the room.
- * e.g. "Sala 101" -> "sala-101"
- *      "Amfiteatrul A1" -> "amfiteatrul-a1"
+ * e.g. "Room 101" -> "room-101"
+ *      "Auditorium A1" -> "auditorium-a1"
  *      "Lab 204" -> "lab-204"
  */
 export function slugifyClassroom(input?: string | null): string {
-  if (!input || !input.trim()) return 'sala-101';
+  if (!input || !input.trim()) return 'room-101';
   const clean = input
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // strip diacritics
@@ -31,7 +31,7 @@ export function slugifyClassroom(input?: string | null): string {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return clean || 'sala-101';
+  return clean || 'room-101';
 }
 
 /**
@@ -40,10 +40,10 @@ export function slugifyClassroom(input?: string | null): string {
 export function formatClassroomName(slugOrName?: string | null): string {
   if (!slugOrName || !slugOrName.trim()) return DEFAULT_CLASSROOM;
   const trimmed = slugOrName.trim();
-  // If it's already nicely cased (e.g. "Sala 101"), return it
+  // If it's already nicely cased (e.g. "Room 101"), return it
   if (/[A-Z]/.test(trimmed)) return trimmed;
 
-  // Convert slug back to title case, e.g. "sala-101" -> "Sala 101"
+  // Convert slug back to title case, e.g. "room-101" -> "Room 101"
   return trimmed
     .split('-')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

@@ -50,7 +50,7 @@ model Session {
   name            String
   date            DateTime
   groups          String                   // comma-separated groups or JSON array, e.g. "AIA 3.3A,AIA 3.1 B"
-  classroom       String?                  @default("sala-101")
+  classroom       String?                  @default("room-101")
   token           String                   @unique @default(cuid())
   status          String                   @default("open") // "open" | "closed"
   hostLat         Float?

@@ -151,9 +151,9 @@ async function runVerification() {
     const excelBuf = await buildAttendanceExcel({
       students: testStudents,
       attendance: testAttendance,
-      courseName: 'Sisteme Embedded',
+      courseName: 'Embedded Systems',
       sessionDate: new Date(),
-      sessionName: 'Laborator 1',
+      sessionName: 'Lab 1',
     });
 
     const wb = new ExcelJS.Workbook();

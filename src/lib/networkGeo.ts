@@ -27,7 +27,7 @@ export async function detectIpCoordinates(clientIp?: string | null): Promise<Geo
     const hostnames = await dns.promises.reverse(targetIp).catch(() => []);
     const host = hostnames[0]?.toLowerCase() || '';
     if (host.includes('camin') || host.includes('ucv.ro')) {
-      return { lat: 44.3168, lng: 23.8225, city: 'Craiova · Campus Mecanică' };
+      return { lat: 44.3168, lng: 23.8225, city: 'Craiova · Mechanics Campus' };
     }
   } catch {}
 

@@ -76,9 +76,9 @@ async function main() {
 
   const testStudent = course.students[0];
 
-  // 1. Create a session bound to "Amfiteatrul A1"
-  const roomName = 'Amfiteatrul A1';
-  const roomSlug = 'amfiteatrul-a1';
+  // 1. Create a session bound to "Auditorium A1"
+  const roomName = 'Auditorium A1';
+  const roomSlug = 'auditorium-a1';
 
   // Clean any previous test sessions with this token
   await prisma.session.deleteMany({

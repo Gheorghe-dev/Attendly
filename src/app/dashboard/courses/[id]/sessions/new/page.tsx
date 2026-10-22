@@ -147,7 +147,7 @@ export default function CreateSessionPage() {
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-medium text-foreground flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-accent" />
-                  <span>Classroom / Sala de curs</span>
+                  <span>Classroom / Lecture Hall</span>
                 </label>
                 <span className="text-[11px] font-mono text-muted-foreground">
                   Bound to predefined room URL
@@ -157,7 +157,7 @@ export default function CreateSessionPage() {
               <Input
                 value={classroom}
                 onChange={(e) => setClassroom(e.target.value)}
-                placeholder="e.g. Sala 101, Amfiteatrul A1, Lab 204"
+                placeholder="e.g. Room 101, Auditorium A1, Lab 204"
                 required
               />
 
