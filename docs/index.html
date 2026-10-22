@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ed">
+  <meta name="description" content="Attendly is a self-hostable QR attendance app. Learn how to install it, manage courses, collect check-ins, and export attendance reports.">
+  <meta property="og:title" content="Attendly — QR attendance for the classroom">
+  <meta property="og:description" content="Present Attendly, explore its features, and learn how to set it up for instructors and students.">
+  <meta property="og:type" content="website">
+  <title>Attendly — QR attendance for the classroom</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172422;
+      --muted: #586762;
+      --paper: #f5f3ed;
+      --surface: #fffefa;
+      --line: #dce2da;
+      --green: #145c4b;
+      --green-dark: #104638;
+      --lime: #d7f178;
+      --orange: #f1a467;
+      --code: #172422;
+      --radius: 18px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      scroll-behavior: smooth;
+      scroll-padding-top: 88px;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); line-height: 1.65; }
+    a { color: var(--green); text-underline-offset: 3px; }
+    a:hover { color: var(--green-dark); }
+    a:focus-visible, button:focus-visible { outline: 3px solid #d06d28; outline-offset: 3px; }
+    .skip { position: absolute; top: -60px; left: 16px; z-index: 10; padding: 10px 14px; color: white; background: var(--green); border-radius: 8px; }
+    .skip:focus { top: 12px; }
+    .topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px clamp(18px, 5vw, 72px); background: rgb(245 243 237 / 94%); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 800; letter-spacing: -.04em; text-decoration: none; }
+    .brand-mark { display: grid; width: 34px; height: 34px; place-items: center; color: var(--lime); background: var(--green); border-radius: 11px; }
+    .brand-mark svg { width: 20px; height: 20px; }
+    .nav { display: flex; align-items: center; gap: clamp(12px, 2.5vw, 30px); }
+    .nav a { color: var(--muted); font-size: .88rem; font-weight: 650; text-decoration: none; }
+    .nav .nav-cta { padding: 9px 14px; color: white; background: var(--green); border-radius: 999px; }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin-inline: auto; }
+    .hero { position: relative; overflow: hidden; padding: clamp(64px, 10vw, 120px) 0 68px; }
+    .hero:after { position: absolute; top: 42px; right: max(-110px, calc((100vw - 1200px) / 2)); width: 300px; height: 300px; background: radial-gradient(circle, rgb(215 241 120 / 75%), rgb(215 241 120 / 0%) 68%); content: ""; pointer-events: none; }
+    .hero-layout { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(300px, .85fr); align-items: center; gap: clamp(28px, 6vw, 72px); }
+    .hero:after { right: 4%; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px; color: var(--green); background: #e8eddb; border: 1px solid #d5dec5; border-radius: 999px; font-size: .76rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .eyebrow span { width: 7px; height: 7px; background: #55a16f; border-radius: 50%; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 780px; margin: 22px 0 18px; font-size: clamp(2.75rem, 7vw, 5.6rem); line-height: .99; letter-spacing: -.075em; }
+    h1 em { color: var(--green); font-style: normal; }
+    .hero-copy { max-width: 660px; color: var(--muted); font-size: clamp(1.02rem, 2vw, 1.2rem); }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    .button { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; padding: 10px 17px; border: 1px solid var(--green); border-radius: 999px; color: white; background: var(--green); font-weight: 750; text-decoration: none; transition: background 160ms ease, transform 160ms ease; }
+    .button:hover { color: white; background: var(--green-dark); transform: translateY(-1px); }
+    .button.secondary { color: var(--green); background: transparent; }
+    .button.secondary:hover { color: var(--green-dark); background: #e8eddb; }
+    .hero-note { margin: 18px 0 0; color: var(--muted); font-size: .84rem; }
+    .hero-note strong { color: var(--ink); }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 52px; }
+    .stat { padding: 18px 20px; background: rgb(255 254 250 / 76%); border: 1px solid var(--line); border-radius: 14px; }
+    .stat strong { display: block; margin-bottom: 3px; font-size: 1.05rem; }
+    .stat span { color: var(--muted); font-size: .85rem; }
+    .product-preview { position: relative; padding: 13px; background: #e7e9de; border: 1px solid #d6dbcf; border-radius: 22px; box-shadow: 0 24px 70px rgb(23 36 34 / 12%); transform: rotate(1deg); }
+    .preview-window { overflow: hidden; background: var(--surface); border: 1px solid #dce2da; border-radius: 14px; }
+    .preview-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid #edf0e9; }
+    .preview-brand { display: flex; align-items: center; gap: 7px; font-size: .78rem; font-weight: 800; }
+    .preview-brand-mark { display: grid; width: 23px; height: 23px; place-items: center; color: var(--lime); background: var(--green); border-radius: 7px; font-size: .68rem; }
+    .preview-avatar { display: grid; width: 26px; height: 26px; place-items: center; color: var(--green); background: #e8eddb; border-radius: 50%; font-size: .7rem; font-weight: 800; }
+    .preview-body { padding: 17px; }
+    .preview-kicker { margin: 0 0 5px; color: var(--muted); font-size: .68rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .preview-title { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+    .preview-title h2 { margin: 0; font-size: 1.18rem; letter-spacing: -.04em; }
+    .live-pill { padding: 4px 8px; color: #176440; background: #e7f4e8; border-radius: 999px; font-size: .65rem; font-weight: 800; white-space: nowrap; }
+    .preview-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 12px; }
+    .metric { padding: 10px; background: #f5f6f0; border-radius: 10px; }
+    .metric strong { display: block; font-size: 1.25rem; line-height: 1.2; letter-spacing: -.04em; }
+    .metric span { color: var(--muted); font-size: .68rem; }
+    .preview-label { margin: 14px 0 7px; font-size: .72rem; font-weight: 800; }
+    .student-row { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid #edf0e9; }
+    .student-avatar { display: grid; width: 29px; height: 29px; place-items: center; color: #42514a; background: #eef0e7; border-radius: 50%; font-size: .62rem; font-weight: 800; }
+    .student-info { min-width: 0; flex: 1; }
+    .student-info strong { display: block; overflow: hidden; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+    .student-info span { display: block; color: var(--muted); font-size: .62rem; }
+    .checked { color: #176440; font-size: .66rem; font-weight: 800; }
+    .preview-caption { margin: 10px 2px 0; color: var(--muted); font-size: .72rem; text-align: center; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .feature-card { min-height: 190px; padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+    .feature-icon { display: grid; width: 38px; height: 38px; place-items: center; margin-bottom: 17px; color: var(--green); background: #e8eddb; border-radius: 12px; font-size: .73rem; font-weight: 850; letter-spacing: .02em; }
+    .feature-card h3 { margin-bottom: 7px; font-size: 1.02rem; letter-spacing: -.02em; }
+    .feature-card p { margin: 0; color: var(--muted); font-size: .88rem; }
+    .details-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .detail-card { padding: clamp(22px, 3vw, 32px); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; }
+    .detail-card h3 { margin-bottom: 10px; font-size: 1.3rem; letter-spacing: -.035em; }
+    .detail-card p { margin-bottom: 12px; color: var(--muted); }
+    .detail-card p:last-child { margin-bottom: 0; }
+    .detail-list { display: grid; gap: 10px; padding: 0; margin: 17px 0 0; list-style: none; }
+    .detail-list li { position: relative; padding-left: 23px; color: var(--muted); font-size: .92rem; }
+    .detail-list li:before { position: absolute; left: 0; color: var(--green); content: "✓"; font-weight: 900; }
+    .privacy-banner { display: flex; align-items: flex-start; gap: 14px; margin-top: 16px; padding: 17px 19px; color: #42514a; background: #eff3e9; border: 1px solid #dce6d1; border-radius: 14px; font-size: .9rem; }
+    .privacy-banner strong { color: var(--ink); }
+    .resource-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .resource-card { display: block; padding: 20px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; text-decoration: none; transition: transform 160ms ease, border-color 160ms ease; }
+    .resource-card:hover { color: var(--ink); border-color: #8ba98d; transform: translateY(-2px); }
+    .resource-card strong { display: block; margin-bottom: 5px; color: var(--green); }
+    .resource-card span { display: block; color: var(--muted); font-size: .86rem; }
+    .section { padding: 66px 0; border-top: 1px solid var(--line); }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+    .section-head h2 { margin: 0; font-size: clamp(1.8rem, 4vw, 2.8rem); line-height: 1.1; letter-spacing: -.055em; }
+    .section-head p { max-width: 470px; margin: 0; color: var(--muted); }
+    .platform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card { min-width: 0; padding: clamp(20px, 3vw, 30px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 24px rgb(23 36 34 / 3%); }
+    .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .card h3 { margin: 0 0 4px; font-size: 1.35rem; letter-spacing: -.035em; }
+    .card .sub { margin: 0 0 18px; color: var(--muted); font-size: .9rem; }
+    .tag { flex: 0 0 auto; padding: 5px 9px; color: var(--green); background: #edf1e6; border-radius: 999px; font-size: .72rem; font-weight: 750; }
+    .steps { padding-left: 20px; }
+    .steps li { padding-left: 4px; margin: 8px 0; }
+    .steps li::marker { color: var(--green); font-weight: 800; }
+    code { overflow-wrap: anywhere; padding: 2px 5px; color: #243b34; background: #edf0e9; border-radius: 5px; font-size: .88em; }
+    pre { overflow-x: auto; margin: 15px 0; padding: 16px; color: #edf5e7; background: var(--code); border-radius: 12px; font-size: .84rem; line-height: 1.65; tab-size: 2; }
+    pre code { padding: 0; color: inherit; background: transparent; }
+    .note { margin-top: 16px; padding: 13px 15px; color: #42514a; background: #eff3e9; border-left: 3px solid #83a656; border-radius: 0 9px 9px 0; font-size: .9rem; }
+    .note strong { color: var(--ink); }
+    .callout { display: grid; grid-template-columns: 1.1fr .9fr; gap: 22px; align-items: center; padding: clamp(24px, 4vw, 38px); color: #f8f9f2; background: var(--green); border-radius: 22px; }
+    .callout h2 { margin: 0 0 10px; font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.1; letter-spacing: -.05em; }
+    .callout p { margin: 0; color: #dce8dc; }
+    .callout .button { width: fit-content; justify-self: end; color: var(--ink); background: var(--lime); border-color: var(--lime); }
+    .callout .button:hover { background: #e3fa99; }
+    .workflow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; counter-reset: how; }
+    .workflow article { padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 15px; counter-increment: how; }
+    .workflow article:before { display: grid; width: 30px; height: 30px; place-items: center; margin-bottom: 16px; color: var(--ink); background: var(--lime); border-radius: 50%; content: counter(how); font-size: .82rem; font-weight: 850; }
+    .workflow h3 { margin-bottom: 6px; font-size: 1rem; }
+    .workflow p { margin: 0; color: var(--muted); font-size: .88rem; }
+    .faq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .faq article { padding: 19px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+    .faq h3 { margin-bottom: 6px; font-size: 1rem; }
+    .faq p { margin: 0; color: var(--muted); font-size: .91rem; }
+    footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 26px 0 38px; border-top: 1px solid var(--line); color: var(--muted); font-size: .85rem; }
+    footer p { margin: 0; }
+    @media (max-width: 760px) {
+      .topbar { align-items: flex-start; }
+      .nav { justify-content: flex-end; flex-wrap: wrap; gap: 8px 14px; }
+      .nav a { font-size: .8rem; }
+      .nav .nav-cta { padding: 6px 10px; }
+      .hero-layout { grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr); gap: 24px; }
+      .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stats { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 12px; }
+      .callout { grid-template-columns: 1fr; }
+      .callout .button { justify-self: start; }
+      .workflow { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 540px) {
+      .wrap { width: min(100% - 28px, 1120px); }
+      .topbar { padding-inline: 14px; }
+      .nav a:not(.nav-cta) { display: none; }
+      .hero-layout { grid-template-columns: 1fr; }
+      .product-preview { max-width: 420px; margin: 4px auto 0; transform: none; }
+      .feature-grid, .details-grid, .resource-grid { grid-template-columns: 1fr; }
+      .platform-grid, .faq { grid-template-columns: 1fr; }
+      .workflow { grid-template-columns: 1fr; }
+      .hero { padding-top: 62px; }
+      .section { padding: 48px 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *:before, *:after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to guide</a>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="Attendly guide home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM15 15h1v1h-1zM19 14v2M14 19h2M19 18v2M18 16h2"/>
+        </svg>
+      </span>
+      <span>Attendly <span style="font-weight:500;color:var(--muted)">/ guide</span></span>
+    </a>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#install">Install</a>
+      <a href="#resources">Guides</a>
+      <a class="nav-cta" href="https://github.com/Gheorghe-dev/QrAttendace">View on GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <div class="wrap">
+        <div class="hero-layout">
+          <div>
+            <span class="eyebrow"><span aria-hidden="true"></span> Open source · self-hostable</span>
+            <h1>Attendance that<br>starts with a <em>scan.</em></h1>
+            <p class="hero-copy">A practical QR attendance system for lectures, labs, and seminars. Organize courses, validate check-ins against your roster, follow the live class, and export attendance reports—all from an app you run.</p>
+            <div class="actions">
+              <a class="button" href="#install">Choose your setup</a>
+              <a class="button secondary" href="#features">Explore Attendly</a>
+            </div>
+            <p class="hero-note"><strong>App vs. website:</strong> this GitHub Pages site presents the product and explains how to use it. Run Attendly on your own computer or server; Pages itself cannot run the app or store attendance.</p>
+          </div>
+          <div>
+            <div class="product-preview" role="img" aria-label="Illustrative Attendly dashboard showing a live lecture, attendance metrics, and sample check-ins">
+              <div class="preview-window">
+                <div class="preview-toolbar">
+                  <div class="preview-brand"><span class="preview-brand-mark" aria-hidden="true">A</span> Attendly <span style="color:var(--muted);font-weight:500">/ Dashboard</span></div>
+                  <span class="preview-avatar" aria-hidden="true">JD</span>
+                </div>
+                <div class="preview-body">
+                  <p class="preview-kicker">Today's session · Computer Science</p>
+                  <div class="preview-title"><h2>Introduction to algorithms</h2><span class="live-pill">● LIVE</span></div>
+                  <div class="preview-metrics">
+                    <div class="metric"><strong>38</strong><span>Students checked in</span></div>
+                    <div class="metric"><strong>82%</strong><span>Class attendance</span></div>
+                  </div>
+                  <p class="preview-label">Recent check-ins</p>
+                  <div class="student-row"><span class="student-avatar" aria-hidden="true">AM</span><span class="student-info"><strong>Alex Morgan</strong><span>Group A · just now</span></span><span class="checked">PRESENT</span></div>
+                  <div class="student-row"><span class="student-avatar" aria-hidden="true">SR</span><span class="student-info"><strong>Sam Rivera</strong><span>Group B · just now</span></span><span class="checked">PRESENT</span></div>
+                  <div class="student-row"><span class="student-avatar" aria-hidden="true">KT</span><span class="student-info"><strong>Kai Thompson</strong><span>Group A · just now</span></span><span class="checked">PRESENT</span></div>
+                </div>
+              </div>
+            </div>
+            <p class="preview-caption">Illustrative interface preview — sample names and counts, not live attendance.</p>
+          </div>
+        </div>
+        <div class="stats" aria-label="Quick facts">
+          <div class="stat"><strong>One QR check-in</strong><span>Students scan a current session QR code and confirm their roster email.</span></div>
+          <div class="stat"><strong>Instructor controlled</strong><span>Run sessions, monitor check-ins, and manage your courses.</span></div>
+          <div class="stat"><strong>Reports you can use</strong><span>Export class attendance to Excel for follow-up and recordkeeping.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Everything around the check-in</h2>
+          <p>Attendly brings the class roster, the active session, and attendance review together in one instructor-managed app.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card"><span class="feature-icon" aria-hidden="true">QR</span><h3>Session QR codes</h3><p>Open an attendance session and present its check-in QR code to the class. Close the session when check-in ends.</p></article>
+          <article class="feature-card"><span class="feature-icon" aria-hidden="true">LIVE</span><h3>Live session monitor</h3><p>See incoming check-ins update on the instructor dashboard, with a roster and a running attendance count.</p></article>
+          <article class="feature-card"><span class="feature-icon" aria-hidden="true">XLS</span><h3>Roster import</h3><p>Bring an existing student list into a course from Excel, or add and manage roster entries in the app.</p></article>
+          <article class="feature-card"><span class="feature-icon" aria-hidden="true">RPT</span><h3>Excel reports</h3><p>Export session attendance and course records into spreadsheets for your own review and recordkeeping.</p></article>
+          <article class="feature-card"><span class="feature-icon" aria-hidden="true">ROOM</span><h3>Classroom workflows</h3><p>Set the classroom and groups for a session. Supported classroom URLs can route students to an active session for that room.</p></article>
+          <article class="feature-card"><span class="feature-icon" aria-hidden="true">APP</span><h3>Web and desktop</h3><p>Use the web app from a modern browser or launch the included Electron desktop wrapper on Windows.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how-it-works">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>From course setup to class report</h2>
+          <p>Set up once, then use the same straightforward routine for each lecture, lab, or seminar.</p>
+        </div>
+        <div class="workflow">
+          <article><h3>Set up a course</h3><p>Create your instructor account, add a course, and import or enter the enrolled students and their groups.</p></article>
+          <article><h3>Configure a session</h3><p>Name the class, choose its date, classroom, and eligible groups, then start check-in.</p></article>
+          <article><h3>Share the QR code</h3><p>Project the session code. Students open the check-in page, enter their roster email, and wait for confirmation.</p></article>
+          <article><h3>Review the results</h3><p>Monitor the roster as people check in. Close check-in and export the session report when finished.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="audience">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Designed around the classroom</h2>
+          <p>Instructors control courses and sessions. Students use a phone browser to check in with the link provided by their instructor.</p>
+        </div>
+        <div class="details-grid">
+          <article class="detail-card">
+            <span class="eyebrow">For instructors</span>
+            <h3>Your course, your session</h3>
+            <p>Manage class lists and attendance from one dashboard, whether you teach one seminar or several lecture groups.</p>
+            <ul class="detail-list">
+              <li>Create courses and maintain student email and group rosters.</li>
+              <li>Import class lists from Excel and organize groups or sections.</li>
+              <li>Create a dated session with its classroom and eligible groups.</li>
+              <li>Present the session QR, follow check-ins, then close attendance.</li>
+              <li>Export attendance reports for review and recordkeeping.</li>
+            </ul>
+          </article>
+          <article class="detail-card">
+            <span class="eyebrow">For students</span>
+            <h3>Check in from your phone</h3>
+            <p>No separate student app is needed. Use the current check-in QR code or the instructor’s approved link in a mobile browser.</p>
+            <ul class="detail-list">
+              <li>Connect to the network or link supplied by the instructor.</li>
+              <li>Scan the session code with your camera or QR reader.</li>
+              <li>Enter the same email address used in the course roster.</li>
+              <li>Wait for the on-screen confirmation before closing the page.</li>
+              <li>Ask the instructor if the link is unavailable or a record needs correction.</li>
+            </ul>
+          </article>
+        </div>
+        <div class="privacy-banner">
+          <span class="feature-icon" aria-hidden="true">DATA</span>
+          <div><strong>Understand where data goes.</strong> Attendly stores its records in a local SQLite database on the host by default. If you enable a public tunnel or host it on a network server, requests and data may pass through that provider or network. Follow your institution’s policies, use a strong private authentication secret, restrict server access, and back up the database securely.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Get Attendly running</h2>
+          <p>Pick the instructions for the computer that will host the app. The first setup downloads dependencies and creates a local SQLite database.</p>
+        </div>
+        <div class="platform-grid">
+          <article class="card">
+            <div class="card-top"><div><h3>Windows</h3><p class="sub">Quick launch or desktop app</p></div><span class="tag">Windows 10/11</span></div>
+            <ol class="steps">
+              <li>Install <a href="https://nodejs.org/">Node.js LTS</a> and <a href="https://git-scm.com/download/win">Git</a>, or install <a href="https://www.docker.com/products/docker-desktop/">Docker Desktop</a>.</li>
+              <li>Open PowerShell in the folder where you want Attendly and clone the repository:</li>
+            </ol>
+            <pre><code>git clone https://github.com/Gheorghe-dev/QrAttendace.git
+cd QrAttendace
+.\start.bat</code></pre>
+            <p>For the desktop window, run <code>.\Attendly.bat</code>. To use a browser, open <code>http://localhost:3000</code>. Stop with <code>.\stop.bat</code> or Ctrl+C in the launcher window.</p>
+            <div class="note"><strong>Firewall:</strong> only allow network access if students need to reach your host. A tunnel is optional; do not expose the instructor dashboard to an untrusted network.</div>
+          </article>
+
+          <article class="card">
+            <div class="card-top"><div><h3>macOS</h3><p class="sub">Terminal or Docker Desktop</p></div><span class="tag">Apple silicon &amp; Intel</span></div>
+            <ol class="steps">
+              <li>Install <a href="https://nodejs.org/">Node.js LTS</a> and Git, or install Docker Desktop for Mac.</li>
+              <li>Open Terminal and run:</li>
+            </ol>
+            <pre><code>git clone https://github.com/Gheorghe-dev/QrAttendace.git
+cd QrAttendace
+chmod +x start.sh stop.sh
+./start.sh</code></pre>
+            <p>Open <code>http://localhost:3000</code>. Keep the Terminal window open while the server is in use; stop with <code>./stop.sh</code> or Ctrl+C.</p>
+            <div class="note"><strong>Gatekeeper:</strong> use the Terminal commands from the downloaded project; macOS does not run the Windows <code>.bat</code> launchers.</div>
+          </article>
+
+          <article class="card">
+            <div class="card-top"><div><h3>Linux</h3><p class="sub">Desktop, VM, or server</p></div><span class="tag">Node.js 18+</span></div>
+            <ol class="steps">
+              <li>Install Node.js 18 or newer, npm, Git, and OpenSSL using your distribution’s trusted package manager.</li>
+              <li>Clone and launch from a terminal:</li>
+            </ol>
+            <pre><code>git clone https://github.com/Gheorghe-dev/QrAttendace.git
+cd QrAttendace
+chmod +x start.sh stop.sh
+./start.sh</code></pre>
+            <p>Visit <code>http://localhost:3000</code> on the host. For access from another device, configure the host firewall and a trusted HTTPS reverse proxy, or use the optional tunnel feature.</p>
+            <div class="note"><strong>Server tip:</strong> use a managed service (for example systemd) for long-running deployments, and back up the database before upgrades.</div>
+          </article>
+
+          <article class="card">
+            <div class="card-top"><div><h3>Docker</h3><p class="sub">Windows, macOS, or Linux host</p></div><span class="tag">No host Node.js</span></div>
+            <ol class="steps">
+              <li>Install and start Docker Desktop, or Docker Engine with the Compose plugin.</li>
+              <li>Clone the repository. Create a strong authentication secret and save it in a root-level <code>.env</code> file (not <code>.env.example</code>).</li>
+            </ol>
+            <pre><code># macOS / Linux
+printf 'NEXTAUTH_SECRET=%s\n' "$(openssl rand -base64 32)" &gt; .env
+docker compose up -d</code></pre>
+            <pre><code># Windows PowerShell
+$bytes = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$secret = [Convert]::ToBase64String($bytes)
+$rng.Dispose()
+"NEXTAUTH_SECRET=$secret" | Set-Content .env -Encoding ascii
+docker compose up -d</code></pre>
+            <p>Open <code>http://localhost:3000</code>. See logs with <code>docker compose logs -f</code>; stop with <code>docker compose down</code>. Attendance data persists in the <code>attendly-data</code> Docker volume.</p>
+            <div class="note"><strong>Keep the secret private.</strong> Compose will refuse to start if <code>NEXTAUTH_SECRET</code> is missing.</div>
+          </article>
+        </div>
+        <p class="note"><strong>Manual Node.js setup:</strong> after cloning, copy <code>.env.example</code> to <code>.env</code>, replace <code>NEXTAUTH_SECRET</code> with a random value, run <code>npm install</code>, <code>npx prisma db push</code>, then <code>npm run dev</code>. For a production build, run <code>npm run build</code> followed by <code>npm start</code>.</p>
+      </div>
+    </section>
+
+    <section class="section" id="getting-started">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Your first attendance session</h2>
+          <p>Once the app is running, create an instructor account and set up a course. You can start with a small test roster before inviting a class.</p>
+        </div>
+        <div class="workflow">
+          <article><h3>Create your account</h3><p>Visit the local app. On first launch, complete the instructor setup form and sign in with your new credentials.</p></article>
+          <article><h3>Add a course &amp; roster</h3><p>Create a course, then add students individually or import a spreadsheet with each student’s name, email, and group.</p></article>
+          <article><h3>Start check-in</h3><p>Create a session, choose the classroom and groups, then display its QR code to students.</p></article>
+          <article><h3>Review &amp; export</h3><p>Watch check-ins appear in the live monitor. Close attendance when ready and download the report.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="students">
+      <div class="wrap">
+        <div class="callout">
+          <div>
+            <h2>For students: scan, verify, done.</h2>
+            <p>Connect to the instructor’s approved check-in link, scan the current session QR code, and enter your email address from the course roster. Wait for the confirmation screen before leaving the page.</p>
+          </div>
+          <a class="button" href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/USER_GUIDE.md">Open the user guide</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="network">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Connect phones to the host</h2>
+          <p>The app runs on the instructor’s computer or server. Student phones need a route to that host while check-in is open.</p>
+        </div>
+        <div class="platform-grid">
+          <article class="card">
+            <h3>Same classroom Wi-Fi</h3>
+            <p>Connect the host and phones to a network that allows devices to communicate. Use the LAN URL shown by your setup or app configuration, and permit the app through the host firewall if prompted.</p>
+            <p class="note"><strong>Network isolation:</strong> guest Wi-Fi and campus networks often block device-to-device traffic. Ask your network administrator if the phones cannot connect.</p>
+          </article>
+          <article class="card">
+            <h3>Different networks</h3>
+            <p>The included launcher can start an optional Cloudflare Quick Tunnel. It produces a temporary public HTTPS URL for scanning; share only the generated check-in link and keep the server running.</p>
+            <p class="note"><strong>Privacy:</strong> tunnel traffic passes through a third-party network provider. Check institutional policies before using it for student data. A public static GitHub Pages address is not an app server or a student check-in endpoint.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="resources">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Keep learning about Attendly</h2>
+          <p>Go from this overview to the complete user walkthrough, technical reference, or source code.</p>
+        </div>
+        <div class="resource-grid">
+          <a class="resource-card" href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/TUTORIAL.md"><strong>Complete tutorial ↗</strong><span>First-time setup, course creation, Excel roster import, attendance sessions, reports, backups, and troubleshooting.</span></a>
+          <a class="resource-card" href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/USER_GUIDE.md"><strong>Instructor user guide ↗</strong><span>Day-to-day operating instructions for starting the app, running a session, monitoring check-ins, and exporting results.</span></a>
+          <a class="resource-card" href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/DOCS.md"><strong>Technical documentation ↗</strong><span>Architecture, API, environment configuration, deployment, and testing details for developers and administrators.</span></a>
+          <a class="resource-card" href="https://github.com/Gheorghe-dev/QrAttendace"><strong>Source code ↗</strong><span>Browse the project repository, download the source, or contribute improvements.</span></a>
+          <a class="resource-card" href="https://github.com/Gheorghe-dev/QrAttendace/issues"><strong>Questions &amp; issues ↗</strong><span>Report a reproducible problem. Do not post passwords, personal student information, or secrets.</span></a>
+          <a class="resource-card" href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/LICENSE"><strong>MIT License ↗</strong><span>Review the license terms for using, modifying, and redistributing this open-source project.</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="help">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Before you go live</h2>
+          <p>Attendance records are sensitive. Start with sensible account, network, and backup practices.</p>
+        </div>
+        <div class="faq">
+          <article><h3>Where is my data stored?</h3><p>In the local SQLite database at <code>prisma/dev.db</code> for a normal install. Docker stores it in the named <code>attendly-data</code> volume. Back it up regularly and protect access to the host.</p></article>
+          <article><h3>Can GitHub Pages host the app?</h3><p>No. Pages serves static files and cannot run the Next.js server, APIs, authentication, or SQLite database. Use it for this guide; run Attendly on a computer or server.</p></article>
+          <article><h3>Students cannot open the QR link</h3><p>Confirm the app is running, check that the QR uses a reachable LAN or tunnel URL, and verify the host firewall and Wi-Fi device isolation settings.</p></article>
+          <article><h3>How do I stop the app?</h3><p>Use the matching stop script, run <code>docker compose down</code> for Docker, or press Ctrl+C in the terminal that started the server.</p></article>
+          <article><h3>Where is the detailed walkthrough?</h3><p>The <a href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/TUTORIAL.md">complete tutorial</a> explains setup, course management, Excel import, sessions, reports, backups, and troubleshooting.</p></article>
+          <article><h3>Where do I report a problem?</h3><p>Check the <a href="https://github.com/Gheorghe-dev/QrAttendace/issues">project issues</a> and include your operating system, setup method, and the error message. Never post passwords, student records, or secrets.</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>Attendly · Open source academic attendance</p>
+    <p><a href="https://github.com/Gheorghe-dev/QrAttendace">Source code</a> · <a href="https://github.com/Gheorghe-dev/QrAttendace/blob/main/LICENSE">MIT License</a></p>
+  </footer>
+</body>
+</html>

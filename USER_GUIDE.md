@@ -1,6 +1,6 @@
 # 📘 User Guide — Attendly
 
-**Attendly** is an open, modern, and privacy-first academic attendance platform designed to run directly from an instructor's laptop with zero cloud subscriptions, zero external databases, and zero lock-in.
+**Attendly** is an open-source academic attendance app that can run on an instructor's computer or a self-managed server. Local installs store course and attendance records in SQLite. Optional Cloudflare tunneling and IP-based location lookup use external services; review institutional privacy requirements before using real student data.
 
 ---
 
@@ -12,7 +12,7 @@
 5. [Student Check-in Workflow (Mobile Experience)](#5-student-check-in-workflow-mobile-experience)
 6. [Live Monitor & Closing Sessions](#6-live-monitor--closing-sessions)
 7. [Reports & Official Excel Export](#7-reports--official-excel-export)
-8. [Anti-Fraud Features: GPS & Device Lock](#8-anti-fraud-features-gps--device-lock)
+8. [Attendance Integrity Checks and Limitations](#8-attendance-integrity-checks-and-limitations)
 9. [Troubleshooting & FAQ](#9-troubleshooting--faq)
 
 ---
@@ -30,7 +30,7 @@ Attendly is packaged as a native desktop app with a dedicated window, custom ico
   ```bash
   npm run desktop
   ```
-*When launched, Attendly displays a branded splash screen, spins up the local engine and Cloudflare tunnel automatically, and opens directly in a dedicated desktop window.*
+*When launched, Attendly displays a branded splash screen, starts the local engine and a Cloudflare tunnel, and opens a dedicated desktop window. The tunnel makes the app reachable over the public internet while active.*
 
 ### Mode 2: Browser / Local Web Mode
 - Double-click **`Open-Attendly-Browser.bat`** or **`start.bat`**:
@@ -41,7 +41,25 @@ Attendly is packaged as a native desktop app with a dedicated window, custom ico
   ```
   and navigate to: **[http://localhost:3000](http://localhost:3000)**.
 
-### Mode 3: Lecture Hall Mode with Worldwide Mobile Tunnel
+### Mode 3: Unix / macOS / Linux All-In-One Launcher
+- Make the script executable and run:
+  ```bash
+  chmod +x start.sh stop.sh
+  ./start.sh
+  ```
+- To stop the server and tunnels at any time:
+  ```bash
+  ./stop.sh
+  ```
+
+### Mode 4: Docker & Docker Compose (Any Operating System)
+Deploy Attendly in a clean, self-contained container without installing Node.js locally:
+```bash
+docker compose up -d
+```
+Access Attendly at **`http://localhost:3000`**. Data is persisted in the `attendly-data` volume.
+
+### Mode 5: Lecture Hall Mode with Worldwide Mobile Tunnel
 For students to scan the QR code from their mobile phones across 4G/5G mobile data or any university Wi-Fi:
 - Run:
   ```bash
@@ -98,7 +116,9 @@ When class begins:
 1. From the course page, click **"New Session"** or **"Launch Session"**.
 2. **Session Details**:
    - Set the lecture title (e.g., *Lecture 1: Introduction*).
-   - Verify date and time.
+   - Select or type the **Classroom / Lecture Hall** (e.g., *Room 101*, *Auditorium A1*, *Lab 204*).
+   - The preview updates live with the room's predefined link (e.g., `/attend/room-101`), allowing permanent room QR posters to work seamlessly.
+   - Verify scheduled date and time.
 3. **Target Groups**:
    - Select specific lab/seminar groups or leave all selected for a general lecture.
    - *Students from unassigned groups will be blocked if they attempt to check in.*
@@ -115,7 +135,7 @@ When class begins:
 5. **Step 2 — Instant Verification**:
    - The server validates the email is in the official course roster.
    - The server checks that the student belongs to the scheduled group.
-   - The server verifies that this physical device has not already checked in another student.
+   - The server may use browser/device identifiers to flag repeated check-ins; this does not verify a student's identity.
 6. **Step 3 — Success Screen**: A confirmation screen displays student name, group, scan timestamp, and verified status checkmark.
 
 ---
@@ -148,18 +168,14 @@ When class begins:
 
 ---
 
-## 8. Anti-Fraud Features: Device Lock & Roster Security
+## 8. Attendance Integrity Checks and Limitations
 
-Attendly includes dual-layer academic integrity protections:
+Attendly applies checks that can help instructors review attendance, but they cannot guarantee the identity or physical location of the person checking in:
 
-1. **Device Anti-Proxy Enforcement**:
-   - Each mobile phone is identified using secure persistent hardware fingerprints and cryptographic device IDs.
-   - Once a phone has checked in a student, it **cannot** check in any other student during that session.
-   - Friends cannot scan QR codes on behalf of absent peers using the same device.
-2. **Scheduled Group Enforcement**:
-   - Restricts check-in strictly to students enrolled in the scheduled group/seminar.
-3. **Audit Trail**:
-   - Unrecognized and rejected attempts are logged in the database with timestamps and reasons (`DEVICE_ALREADY_USED`, `GROUP_NOT_ALLOWED`, `NOT_IN_ROSTER`).
+1. **Duplicate-device signals**: Browser/device identifiers can flag some repeated check-ins. Identifiers can be cleared, changed, or spoofed.
+2. **Approximate location**: Browser geolocation may be available; IP-based estimates can be inaccurate and may use an external location service. Treat distance as an indicator only.
+3. **Roster and group checks**: The app checks that the submitted email belongs to the course roster and a group allowed for that session.
+4. **Session status and logs**: Closed sessions reject check-ins; the app records some rejected attempts with a reason.
 
 ---
 

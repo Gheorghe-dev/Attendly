@@ -1,0 +1,22 @@
+services:
+  attendly:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: attendly
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - DATABASE_URL=file:./dev.db
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-attendly-default-secure-secret-key-replace-in-production}
+      - NEXTAUTH_URL=http://localhost:3000
+      - AUTH_TRUST_HOST=true
+      - APP_URL=http://localhost:3000
+    volumes:
+      - attendly-data:/app/prisma
+
+volumes:
+  attendly-data:

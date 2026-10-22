@@ -1,9 +1,33 @@
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
 const TUNNEL_FILE = path.join(process.cwd(), '.tunnel_url');
+
+// Auto-bootstrap environment & database if missing
+function ensurePrerequisites() {
+  const envPath = path.join(process.cwd(), '.env');
+  const envExamplePath = path.join(process.cwd(), '.env.example');
+  if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
+    console.log('  [Setup] Initializing .env configuration...');
+    let envContent = fs.readFileSync(envExamplePath, 'utf-8');
+    const secret = require('crypto').randomBytes(32).toString('base64');
+    envContent = envContent.replace('change-this-to-a-secure-random-32-byte-string', secret);
+    fs.writeFileSync(envPath, envContent, 'utf-8');
+  }
+
+  const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+  if (!fs.existsSync(dbPath)) {
+    console.log('  [Setup] Initializing local database schema...');
+    try {
+      execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
+    } catch {
+      console.warn('  [Setup] Database initialization will proceed on next step.');
+    }
+  }
+}
+ensurePrerequisites();
 
 // Clean up stale tunnel file on start
 try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
@@ -57,8 +81,15 @@ async function startServer() {
     if (browserOpened) return;
     browserOpened = true;
     const localUrl = 'http://localhost:3000';
-    const openCmd = process.platform === 'win32' ? `start "" "${localUrl}"` : `open "${localUrl}"`;
-    exec(openCmd);
+    let openCmd;
+    if (process.platform === 'win32') {
+      openCmd = `start "" "${localUrl}"`;
+    } else if (process.platform === 'darwin') {
+      openCmd = `open "${localUrl}"`;
+    } else {
+      openCmd = `xdg-open "${localUrl}" >/dev/null 2>&1 || sensible-browser "${localUrl}" >/dev/null 2>&1 || true`;
+    }
+    exec(openCmd, () => {});
   }
 
   // Wait for server to respond
@@ -120,6 +151,8 @@ async function startCloudflareTunnel(serverProc) {
     try {
       if (process.platform === 'win32') {
         exec('taskkill /F /IM cloudflared.exe >nul 2>&1');
+      } else {
+        exec('killall cloudflared >/dev/null 2>&1 || true');
       }
       tunnel.kill();
     } catch {}

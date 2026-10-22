@@ -1,9 +1,30 @@
 {
   "name": "attendly",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Self-hosted academic attendance management with QR check-ins, course rosters, and Excel reports.",
+  "license": "MIT",
+  "author": "Attendly Open Source Community",
+  "homepage": "https://github.com/Gheorghe-dev/QrAttendace",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gheorghe-dev/QrAttendace.git"
+  },
+  "keywords": [
+    "attendance",
+    "education",
+    "higher-education",
+    "university",
+    "qr-code",
+    "nextjs",
+    "electron",
+    "anti-proxy",
+    "classroom"
+  ],
   "main": "electron/main.js",
   "scripts": {
+    "launch": "node scripts/start-internet.js",
+    "start:all": "node scripts/start-internet.js",
+    "app": "node scripts/start-internet.js",
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
@@ -14,6 +35,7 @@
     "desktop:pack": "electron-builder --dir",
     "lint": "next lint",
     "test": "jest --passWithNoTests",
+    "test:e2e": "tsx scripts/verify-all.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:excel": "tsx seed/create-sample-excel.ts",
     "db:demo": "tsx seed/create-demo-excel.ts",
@@ -23,7 +45,7 @@
     "shortcuts": "node scripts/create-shortcuts.js"
   },
   "build": {
-    "appId": "ro.attendly.desktop",
+    "appId": "org.attendly.desktop",
     "productName": "Attendly",
     "directories": {
       "output": "release"

@@ -28,6 +28,7 @@ model Course {
   sessions    Session[]
 
   @@unique([name, professorId])
+  @@index([professorId])
 }
 
 model Student {
@@ -41,6 +42,8 @@ model Student {
   attendance  AttendanceRecord[]
 
   @@unique([email, courseId])
+  @@index([courseId])
+  @@index([group])
 }
 
 model Session {
@@ -60,6 +63,10 @@ model Session {
   attendance      AttendanceRecord[]
   verTokens       VerificationToken[]
   unrecognized    UnrecognizedSubmission[]
+
+  @@index([courseId])
+  @@index([classroom])
+  @@index([status])
 }
 
 model AttendanceRecord {
@@ -79,6 +86,11 @@ model AttendanceRecord {
   createdAt         DateTime  @default(now())
 
   @@unique([sessionId, studentId])
+  @@index([sessionId])
+  @@index([studentId])
+  @@index([status])
+  @@index([verifiedAt])
+  @@index([deviceId])
 }
 
 model VerificationToken {
@@ -90,6 +102,10 @@ model VerificationToken {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([email])
+  @@index([expiresAt])
 }
 
 model UnrecognizedSubmission {
@@ -102,4 +118,7 @@ model UnrecognizedSubmission {
   deviceFingerprint String?
   reason            String   @default("NOT_IN_ROSTER")
   submittedAt       DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([submittedAt])
 }

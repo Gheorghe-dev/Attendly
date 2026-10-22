@@ -42,6 +42,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# electron packaging & distributions
+/release/
+/dist/
+/.agents/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

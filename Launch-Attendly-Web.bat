@@ -3,6 +3,18 @@ setlocal
 cd /d "%~dp0"
 title Attendly Web
 
+if not exist ".env" (
+    copy ".env.example" ".env" >nul
+)
+
+if not exist "node_modules\" (
+    call npm install
+)
+
+if not exist "prisma\dev.db" (
+    call npx prisma db push
+)
+
 REM Ensure production build exists
 if not exist ".next\BUILD_ID" (
     echo.

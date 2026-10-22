@@ -1,16 +1,16 @@
-# 🎓 QR Attendance System
+# 🎓 Attendly — Academic Attendance Tracking System
 
 <p align="center">
-  <strong>A full-stack, enterprise-grade QR attendance tracking platform designed for universities and higher education institutions.</strong>
+  <strong>An open-source QR attendance app for instructors who want to manage courses, check-ins, and attendance reports from their own computer or server.</strong>
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge" alt="MIT License" />
   <img src="https://img.shields.io/badge/Next.js-14.2-black?style=for-the-badge&logo=next.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Prisma-5.0-2D3748?style=for-the-badge&logo=prisma" alt="Prisma" />
-  <img src="https://img.shields.io/badge/SQLite-Zero_Config-003B57?style=for-the-badge&logo=sqlite" alt="SQLite" />
-  <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css" alt="Tailwind CSS" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
+  <img src="https://img.shields.io/badge/Electron-Desktop-47848F?style=for-the-badge&logo=electron" alt="Electron" />
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker" alt="Docker" />
+  <img src="https://img.shields.io/badge/Platforms-Web_|_Windows_|_macOS_|_Linux-purple?style=for-the-badge" alt="Web and desktop platforms" />
 </p>
 
 ---
@@ -18,382 +18,302 @@
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
-- [Key Features](#-key-features)
+- [App Presentation](#-app-presentation)
+- [Why Attendly?](#-why-attendly)
+- [Core Features](#-core-features)
+- [Quick Start Guide](#-quick-start-guide)
+  - [Option A: Windows (One-Click)](#option-a-windows-one-click)
+  - [Option B: macOS & Linux](#option-b-macos--linux)
+  - [Option C: Docker & Docker Compose](#option-c-docker--docker-compose)
+  - [Option D: Developer / Manual CLI](#option-d-developer--manual-cli)
+- [Predefined Classroom URLs](#-predefined-classroom-urls)
+- [Attendance Integrity Checks](#-attendance-integrity-checks)
+- [Excel Import & Export Standards](#-excel-import--export-standards)
 - [System Architecture](#-system-architecture)
-- [One-Click Windows Launcher](#-one-click-windows-launcher)
-- [Quick Start (Manual / Developers)](#-quick-start-manual--developers)
-- [Excel Student Roster Format](#-excel-student-roster-format)
-- [Worldwide Scanning (Cloudflare Quick Tunnel)](#-worldwide-scanning-cloudflare-quick-tunnel)
-- [GPS Geolocation & Anti-Proxy Security](#-gps-geolocation--anti-proxy-security)
-- [Professor & Student Workflow](#-professor--student-workflow)
-- [REST API Reference](#-rest-api-reference)
-- [Database Schema](#-database-schema)
-- [Environment Configuration](#-environment-configuration)
-- [Testing & Quality Assurance](#-testing--quality-assurance)
-- [Project Structure](#-project-structure)
+- [Verification & Automated Tests](#-verification--automated-tests)
+- [Contributing](#-contributing)
 - [License](#-license)
+- [Documentation](#-documentation)
 
 ---
 
 ## 🌟 Overview
 
-The **QR Attendance System** solves attendance tracking in large university lectures and laboratory classes. Instead of passing around paper sign-in sheets or using expensive proprietary hardware, professors project a dynamic cryptographic QR code on the lecture hall screen. Students scan the code with their smartphone, submit their university credentials, and confirm their attendance via an anti-proxy verification pipeline.
+**Attendly** helps instructors manage course rosters and record attendance in lectures, seminars, and laboratory classes. Instructors create a course, import a student roster, open a session, and display its QR code for students to check in.
 
-The application is **100% free and open-source**, runs locally on the professor's computer, requires zero external cloud subscriptions or paid servers, and includes a single-click desktop shortcut that automates firewall configuration, local server launch, and public internet tunneling.
+The web app and SQLite database can run on an instructor's computer or a self-managed server. If you use the optional Cloudflare Quick Tunnel or IP-based location fallback, some network traffic or IP address data is handled by those external services. Review your institution's privacy requirements before using real student data.
+
+## 🎤 App Presentation
+
+**Attendly turns classroom attendance into a simple, repeatable workflow.** An instructor creates a course, imports its student roster, and opens a session for a class meeting. Students scan the session's QR code on their phones and submit a check-in; the instructor can follow submissions live, close or reopen the session, and export the resulting records to Excel.
+
+### A typical class session
+
+1. **Set up a course:** Add course details and import the roster from an Excel workbook.
+2. **Open attendance:** Create a session for the course and choose its classroom.
+3. **Share the check-in:** Display the session QR code or use a predefined classroom link.
+4. **Monitor participation:** Review incoming check-ins in the live dashboard and manage the session.
+5. **Keep the record:** Export a session report or a course attendance matrix for follow-up.
+
+Attendly is designed for instructors and academic teams who want a practical alternative to paper sign-in sheets, without requiring dedicated classroom scanning hardware. It can run as a web app or a Windows desktop app, with Docker available for self-managed deployments. Attendance and location signals are intended to assist classroom workflows; they do not independently verify a student's identity or physical presence.
 
 ---
 
-## ✨ Key Features
+## 💡 Why Attendly?
 
-- **🏛 Modern Academic Elegance UI**: Sophisticated editorial aesthetic designed specifically for higher education. Rich typography (`Fraunces` serif headlines, `Inter` for data density, and `JetBrains Mono` for telemetry and codes), ivory paper background (`#FAF8F4`), deep navy ink (`#0F1B2D`), warm antique gold accents (`#B08D57`), full Dark Mode (`#0B1220`), WCAG 2.2 AA contrast compliance, and tabular numerals across all statistical counters.
-- **⚡ One-Click Desktop Launcher**: Launch the entire stack (Firewall unblocking, Node.js server, Cloudflare tunnel, and browser dashboard) via a single desktop shortcut.
-- **🌐 Scan from Anywhere (Zero Port Forwarding)**: Uses Cloudflare Quick Tunnels (`trycloudflare.com`) to allow instant scanning across different Wi-Fi networks and mobile data (4G/5G) with **no router configuration, no accounts, and no fees**.
-- **📍 Anti-Proxy GPS Geofencing**: Enforce physical classroom presence using GPS geolocation radius calculations (Haversine formula). Students outside the classroom cannot mark attendance.
-- **👥 Flexible Group Management**: Native support for any subgroup format (e.g. `AIA 3.3A`, `AIA 3.1 B`, `ELA 2.2 A`, `Group 1`, etc.).
-- **📊 Real-Time Live Monitoring (SSE)**: Server-Sent Events stream live attendance updates to the professor's screen as students register—no page refreshing required.
-- **📥 Smart Excel Import & Downloadable Template**:
-  - Drag-and-drop `.xlsx` student roster upload with instant validation preview.
-  - Recognizes flexible headers (`Student Name`, `University Email`, `Group`, `THE Name`, `imai`, `Grupa`).
-  - Auto-fallback for headerless and transposed (horizontal) spreadsheets.
-  - Built-in **Download Template** button.
-- **📤 One-Click Excel Export**: Export clean, color-coded `.xlsx` reports (Single Session or Multi-Session Course aggregate) with timestamps and attendance percentages.
-- **🔒 2-Step Verification & Cryptographic Tokens**: Prevents link sharing using ephemeral session tokens and optional 15-minute one-time email verification links.
-- **🖥 Projector & Fullscreen Mode**: High-contrast, scalable QR modal designed for large lecture hall projection screens.
+| Traditional Methods | Attendly |
+| :--- | :--- |
+| **Paper Sign-in Sheets**: Manual collection and data entry. | **QR check-in**: Students scan a session link and the instructor monitors check-ins in the app. |
+| **Expensive RFID/Biometric Systems**: High maintenance, fixed room readers, vendor lock-in. | **Zero Hardware**: Uses standard phone cameras and standard classroom projectors. |
+| **Cloud SaaS Subscriptions**: Monthly per-student fees and data hosted by a vendor. | **Self-hosted option**: Run the app with a local SQLite database and manage where it is hosted. Optional tunnels and IP geolocation use third-party services. |
+
+---
+
+## ✨ Core Features
+
+- **🏛 Instructor dashboard**: Responsive course and session views, light and dark themes, and live check-in monitoring.
+- **📍 Predefined Classroom URLs**: Direct links bound permanently to physical rooms (e.g., `/attend/room-101`, `/attend/auditorium-a1`, `/attend/lab-204`). Instructors can print permanent posters in lecture halls.
+- **🛡 Attendance checks**: Roster membership, session status, group rules, and browser/device identifiers help flag duplicate-device check-ins. These checks are not proof of identity or physical presence.
+- **📏 Approximate location telemetry**: The app can use browser geolocation and IP-based location estimates. Location may be unavailable or inaccurate; IP geolocation may send an IP address to an external provider.
+- **🌐 Optional mobile access**: The launch scripts can create an ephemeral Cloudflare Quick Tunnel so student phones can reach the app without router configuration. This exposes the app over the internet while the tunnel is running.
+- **⚡ Real-Time Live Monitor (SSE)**: Live roster dashboard streams check-ins in real time with audio-visual notifications and percentage turnout indicators.
+- **📥 Smart Excel Importer**: Drag-and-drop roster upload with automatic column detection (handles any subgroup or section naming convention like `CS 3.1A`, `Group 2`, etc.).
+- **📤 Official Excel Reports**: 1-click export of color-coded attendance sheets for individual sessions or full semester course matrices.
+- **🖥 Dedicated Native Desktop App**: Runs as a standalone desktop application via Electron with system tray controls, desktop shortcuts, and auto-managed server processes.
+
+---
+
+## 🚀 Quick Start Guide
+
+> **App vs. documentation site:** The optional static guide is in [`docs/`](docs/index.html). The app itself must run on your computer or server; GitHub Pages cannot host its database or API.
+
+### Option A: Windows (One-Click)
+
+Attendly provides automated self-configuring Windows launchers:
+
+Before the first launch, create `.env` from `.env.example` if needed and replace the sample `NEXTAUTH_SECRET` with a unique value. Windows launchers copy the template but do not generate a replacement secret. See [TUTORIAL.md](TUTORIAL.md) for the exact steps.
+
+1. **Native Desktop App**:
+   - Double-click **`Attendly.bat`** (or use the desktop shortcut).
+   - Installs dependencies and initializes/builds the app when needed, then opens the desktop window. The desktop launcher also starts a Cloudflare tunnel.
+   - Before your first launch, replace the sample `NEXTAUTH_SECRET` in `.env` with a generated value (steps in [TUTORIAL.md](TUTORIAL.md)).
+
+2. **Web Browser + Worldwide Mobile Tunnel**:
+   - Run **`start.bat`** (it may request Administrator permission to configure Windows Firewall).
+   - Starts the server and Cloudflare tunnel, then opens `http://localhost:3000`.
+   - Use this only when you intend to let student phones connect over the network. The tunnel URL is publicly reachable while active.
+
+3. **To stop**: Double-click **`stop.bat`**.
+
+---
+
+### Option B: macOS & Linux
+
+Attendly includes native shell scripts for macOS and any Linux distribution:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Gheorghe-dev/QrAttendace.git
+cd QrAttendace
+
+# 2. Make scripts executable
+chmod +x start.sh stop.sh
+
+# 3. Launch Attendly
+./start.sh
+```
+`./start.sh` checks Node.js, creates `.env` from `.env.example` (and replaces its sample secret), installs dependencies if needed, initializes the database if missing, builds the app if needed, and starts the server and Cloudflare tunnel.
+
+To stop Attendly at any time:
+```bash
+./stop.sh
+```
+
+---
+
+### Option C: Docker & Docker Compose
+
+Deploy Attendly on any server or workstation without installing Node.js on the host.
+Create a root-level `.env` file with a unique authentication secret before starting Docker. Do not expose the app with the sample/default secret:
+
+```bash
+printf 'NEXTAUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > .env
+```
+
+On Windows PowerShell:
+
+```powershell
+$bytes = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$secret = [Convert]::ToBase64String($bytes)
+$rng.Dispose()
+"NEXTAUTH_SECRET=$secret" | Set-Content .env -Encoding ascii
+```
+
+Then start the app, follow logs, and stop it with:
+```bash
+docker compose up -d
+docker compose logs -f
+docker compose down
+```
+
+Access Attendly in your browser at: **`http://localhost:3000`**
+All SQLite database files are persistently mounted in Docker volume `attendly-data`. Never commit the `.env` file.
+
+---
+
+### Option D: Developer / Manual CLI
+
+If you prefer running via standard Node.js package scripts:
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment and replace the sample NEXTAUTH_SECRET
+cp .env.example .env
+# Generate a secret, then paste it into .env:
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+# 3. Initialize SQLite database schema
+npx prisma generate
+npx prisma db push
+
+# 4. Run development server
+npm run dev
+
+# Or run optimized production server
+npm run build
+npm start
+```
+
+Open `http://localhost:3000`. On a new database, create your instructor account from the setup screen. `npm run db:seed` is for disposable demo/test data only: it creates a known demo password and deletes courses already belonging to that demo account.
+
+---
+
+## 🏛 Predefined Classroom URLs
+
+Instead of generating hard-to-read cryptographic strings, Attendly binds student links directly to each lecture hall:
+
+- `http://<host>:3000/attend/room-101`
+- `http://<host>:3000/attend/auditorium-a1`
+- `http://<host>:3000/attend/lab-204`
+
+### How It Works:
+1. When creating a session, select or type the classroom name.
+2. The system automatically routes students visiting that room URL to the **currently active session** in that room.
+3. Instructors can print laminated QR code posters and attach them permanently to classroom lecterns or doors.
+
+---
+
+## 🛡 Attendance Integrity Checks
+
+Attendly applies server-side roster, group, session-status, and duplicate-device checks. Browser fingerprints and device identifiers can be changed, shared, or unavailable; they are not reliable proof that a person is who they claim to be or is physically in the classroom. Treat location and device signals as supplementary indicators, not a substitute for an institution's identity or attendance policy.
+
+```
+                      Student Submits Scan
+                               │
+            ┌──────────────────┴──────────────────┐
+            ▼                                     ▼
+ 1. Browser / device signals             2. Optional location signals
+   - Identifiers can be reset              - GPS or IP estimate
+   - Used to detect duplicates             - May be unavailable/inaccurate
+            │                                     │
+            └──────────────────┬──────────────────┘
+                               ▼
+                    Verification Decision
+              [ PASS ]  -> Recorded in Live Roster
+              [ FAIL ]  -> Logged in Rejected Submissions
+```
+
+- **Duplicate-device check**: Reuse of a device identifier within a session can be rejected as `DEVICE_ALREADY_USED`; this does not prevent all proxy attendance.
+- **Roster & Group Enforcement**: Students outside the enrolled course roster or not belonging to the scheduled lab subgroup cannot confirm attendance.
+- **Session status**: Check-ins are rejected while a session is closed; reopening the session allows check-ins again.
+
+---
+
+## 📊 Excel Import & Export Standards
+
+### Importing Rosters (.xlsx)
+Attendly features a tolerant parser that reads your existing university spreadsheets:
+- **Columns Supported**:
+  - `Name` / `Student Name` / `Full Name`
+  - `Email` / `University Email` / `Student Email`
+  - `Group` / `Subgroup` / `Section` (e.g., `AIA 3.1A`, `Group 2`, `Lab B`)
+- Also supports headerless spreadsheets and transposed (horizontal) layouts.
+- Built-in **Download Excel Template** button available in the course dashboard.
+
+### Exporting Reports (.xlsx)
+- **Single Session Report**: Color-coded spreadsheet of students with check-in timestamps and any available approximate location data.
+- **Course Matrix Report**: Complete semester attendance table with students as rows, sessions as columns, and automatic attendance percentage calculations.
 
 ---
 
 ## 🏗 System Architecture
 
 ```
-                  ┌─────────────────────────────────────────┐
-                  │       Professor Desktop / Laptop        │
-                  │                                         │
-                  │  ┌──────────────┐     ┌──────────────┐  │
-                  │  │ Next.js App  │ <-> │ SQLite DB    │  │
-                  │  │ (Port 3000)  │     │ (dev.db)     │  │
-                  │  └──────┬───────┘     └──────────────┘  │
-                  └─────────┼───────────────────────────────┘
-                            │
-               ┌────────────┴────────────┐
-               │  Cloudflare Quick Tunnel│  (Zero-config HTTPS tunnel)
-               └────────────┬────────────┘
-                            │ Public Internet (https://*.trycloudflare.com)
-            ┌───────────────┴───────────────┐
-            │                               │
-            ▼                               ▼
-    ┌───────────────┐               ┌───────────────┐
-    │ Mobile Phone  │               │ Mobile Phone  │
-    │  (4G/5G Data) │               │(Outside Wi-Fi)│
-    └───────────────┘               └───────────────┘
+┌────────────────────────────────────────────────────────┐
+│               Host Computer (Instructor)               │
+│                                                        │
+│  ┌──────────────────────┐    ┌──────────────────────┐  │
+│  │ Next.js 14 Web / API │<-->│ SQLite Database      │  │
+│  │ (Port 3000)          │    │ (prisma/dev.db)      │  │
+│  └──────────┬───────────┘    └──────────────────────┘  │
+└─────────────┼──────────────────────────────────────────┘
+              │
+   ┌──────────┴──────────┐
+   │ Cloudflare Quick    │  (Temporary public HTTPS tunnel)
+   │ Worldwide Tunnel    │
+   └──────────┬──────────┘
+              │ Public Internet (https://*.trycloudflare.com)
+     ┌────────┴────────┐
+     ▼                 ▼
+┌───────────┐     ┌───────────┐
+│  Mobile   │     │  Mobile   │
+│ (4G / 5G) │     │  (Wi-Fi)  │
+└───────────┘     └───────────┘
 ```
 
 ---
 
-## 🚀 One-Click Windows Launcher
+## 🧪 Verification & Automated Tests
 
-For professors on Windows, the system includes an automated launcher that configures the operating system and runs the entire stack in one click:
-
-1. Double-click the **`QR Attendance System`** shortcut on your Desktop (or run `start.bat`).
-2. When Windows requests Administrator elevation (*"Do you want to allow this app to make changes?"*), click **Yes**.
-3. The launcher automatically:
-   - Configures **Windows Defender Firewall** to allow Node.js on all profiles.
-   - Opens inbound **TCP Port 3000**.
-   - Switches the active Wi-Fi profile to **Private**.
-   - Starts the Next.js server on `0.0.0.0:3000`.
-   - Starts the public **Cloudflare Quick Tunnel**.
-   - Opens your default web browser to the dashboard.
-
----
-
-## 🛠 Quick Start (Manual / Developers)
-
-### 1. Prerequisites
-- **Node.js**: v18.17+ or v20+
-- **npm**: v9+
-- **Git**
-
-### 2. Installation
-```bash
-git clone https://github.com/your-username/qr-attendance-system.git
-cd qr-attendance-system
-npm install
-```
-
-### 3. Environment Setup
-Copy the example environment configuration:
-```bash
-cp .env.example .env
-```
-Key defaults in `.env`:
-```ini
-DATABASE_URL="file:./dev.db"
-NEXTAUTH_SECRET="change-this-to-a-secure-random-32-char-string"
-NEXTAUTH_URL="http://localhost:3000"
-AUTH_TRUST_HOST="true"
-APP_URL="http://localhost:3000"
-```
-
-### 4. Database Setup & Seeding
-```bash
-npx prisma generate
-npx prisma migrate dev --name init
-npm run db:seed
-npm run db:excel
-```
-
-Default credentials:
-- **Email:** `prof@university.edu`
-- **Password:** `professor123`
-
-### 5. Running the Application
-```bash
-# Development mode
-npm run dev
-
-# Production build and run
-npm run build
-npm start
-```
-
----
-
-## 📄 Excel Student Roster Format
-
-The student roster can be imported via an Excel (`.xlsx`) spreadsheet. The system supports both vertical and horizontal layouts, and accepts any custom group names.
-
-### Column Specification
-
-| Column | Header Name | Description | Example Values |
-|:---|:---|:---|:---|
-| **Column 1** | `Student Name` / `Name` / `THE Name` | Full student name | `Alice Johnson`, `Popescu Andrei` |
-| **Column 2** | `University Email` / `Email` / `imai` | Unique university email | `alice@university.edu`, `andrei@univ.ro` |
-| **Column 3** | `Group` / `Groups` / `Grupa` | Subgroup / Lab section | `AIA 3.3A`, `AIA 3.1 B`, `ELA 2.2 A` |
-
-### Sample Roster Table
-
-| Student Name | University Email | Group |
-|:---|:---|:---|
-| Popescu Andrei | andrei.popescu@student.univ.ro | `AIA 3.3A` |
-| Ionescu Maria | maria.ionescu@student.univ.ro | `AIA 3.1 B` |
-| Radu Cristian | cristian.radu@student.univ.ro | `ELA 2.2 A` |
-| Dumitrescu Elena | elena.dumitrescu@student.univ.ro | `AIA 3.3A` |
-| Stan Alexandru | alexandru.stan@student.univ.ro | `ELA 2.1 B` |
-
-> 💡 **Tip:** A ready-to-use template is available directly in the web dashboard under **Course $\rightarrow$ Import Excel $\rightarrow$ Download Template (.xlsx)**.
-
----
-
-## 🌐 Worldwide Scanning (Cloudflare Quick Tunnel)
-
-By default, local servers (`http://localhost:3000`) cannot be accessed by mobile phones on cellular data (4G/5G) or external Wi-Fi networks without complex router NAT port-forwarding or public IP addresses.
-
-This system solves this seamlessly using **Cloudflare Quick Tunnels**:
-- Integrated directly into `scripts/start-internet.js`.
-- Generates a temporary, cryptographically signed HTTPS URL:
-  `https://random-subdomain.trycloudflare.com`
-- QR codes generated in the professor dashboard automatically encode this public tunnel URL.
-- Students can scan and submit attendance from **any smartphone on any internet connection** with zero friction.
-
----
-
-## 📍 GPS Geolocation & Anti-Proxy Security
-
-To eliminate remote "proxy attendance" (students scanning QR screenshots sent by friends from outside class), the system provides an optional **GPS Geofence**:
-
-```
-                              [Classroom GPS Center]
-                                       │
-                         ╭─────────────┴─────────────╮
-                         │      Allowed Radius       │
-                         │         (e.g. 50m)        │
-                         │                           │
-                   [Student A]                       │
-                  (Inside: OK)                       │
-                         ╰───────────────────────────╯
-                                                     
-                                               [Student B]
-                                            (Outside: REJECTED)
-```
-
-1. **Professor Session Setup**: Click *"Detect Current Location"* when creating a session. The system records your classroom's latitude, longitude, and accuracy radius.
-2. **Student Check-In**: The student's mobile browser requests location permission upon opening the attendance page.
-3. **Server Validation**: The server calculates the exact distance using the **Haversine formula**:
-   $$d = 2r \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta \varphi}{2}\right) + \cos(\varphi_1)\cos(\varphi_2)\sin^2\left(\frac{\Delta \lambda}{2}\right)}\right)$$
-4. If $d > \text{allowed radius}$, the submission is rejected immediately.
-
----
-
-## 🔄 Professor & Student Workflow
-
-### 👨‍🏫 Professor Workflow
-1. **Sign In**: Log into `/dashboard` using university credentials.
-2. **Create / Select Course**: Upload students via `.xlsx` or manage groups.
-3. **Start Session**: Pick the date, session name, targeted groups (`AIA 3.3A`, `AIA 3.1 B`, etc.), and optional GPS boundary.
-4. **Project QR Code**: Open the session and click **Show QR Code** (or press fullscreen for projector mode).
-5. **Monitor Live**: Watch student names appear in real-time as they verify attendance.
-6. **Export**: Click **Export Excel** at the end of class to generate the finalized attendance sheet.
-
-### 📱 Student Workflow
-1. **Scan**: Scan the projected QR code using any smartphone camera.
-2. **Enter Email**: Enter the official university email address.
-3. **Location Check**: Grant location access for classroom geofence verification.
-4. **Instant Confirmation**: Receive immediate confirmation of verified attendance.
-
----
-
-## 🔌 REST API Reference
-
-| Endpoint | Method | Auth | Description |
-|:---|:---:|:---:|:---|
-| `/api/auth/[...nextauth]` | `POST` | Public | NextAuth credentials sign-in & session handling |
-| `/api/auth/register` | `POST` | Public | Register new professor account on local instance |
-| `/api/courses` | `GET`, `POST` | Professor | List professor courses or create a new course |
-| `/api/courses/[id]` | `GET`, `PATCH`, `DELETE` | Professor | Retrieve, rename, or delete a course |
-| `/api/courses/[id]/students` | `GET`, `POST` | Professor | List enrolled students or upload `.xlsx` roster |
-| `/api/courses/template` | `GET` | Public | Download sample `.xlsx` student roster template |
-| `/api/courses/[id]/groups` | `GET`, `PATCH` | Professor | Query group counts, rename groups, or add extra groups |
-| `/api/courses/[id]/export` | `GET` | Professor | Export multi-session Excel report for entire course |
-| `/api/sessions` | `GET`, `POST` | Professor | List all sessions or create a new attendance session |
-| `/api/sessions/[id]` | `GET`, `PATCH`, `DELETE` | Professor | Retrieve session details, toggle open/closed, or delete |
-| `/api/sessions/[id]/qr` | `GET` | Professor | Generate QR code data URL and public attendance URL |
-| `/api/sessions/[id]/stream` | `GET` | Professor | Server-Sent Events (SSE) real-time attendance stream |
-| `/api/sessions/[id]/export` | `GET` | Professor | Export single session `.xlsx` attendance report |
-| `/api/attend/[token]` | `GET`, `POST` | Public | Validate session token and submit student attendance |
-| `/api/verify` | `GET` | Public | Verify one-time email attendance token |
-
----
-
-## 🗄 Database Schema
-
-The database is built on **SQLite** with **Prisma ORM** (7 models):
-
-```mermaid
-erDiagram
-    Professor ||--o{ Course : owns
-    Course ||--o{ Student : contains
-    Course ||--o{ Session : conducts
-    Session ||--o{ AttendanceRecord : records
-    Student ||--o{ AttendanceRecord : attends
-    Session ||--o{ VerificationToken : issues
-    Session ||--o{ UnrecognizedSubmission : logs
-
-    Professor {
-        string id PK
-        string email UK
-        string passwordHash
-        string name
-        datetime createdAt
-    }
-
-    Course {
-        string id PK
-        string name
-        string professorId FK
-        string extraGroups
-        datetime createdAt
-    }
-
-    Student {
-        string id PK
-        string name
-        string email
-        string group
-        string courseId FK
-        datetime createdAt
-    }
-
-    Session {
-        string id PK
-        string courseId FK
-        string name
-        datetime date
-        string groups
-        string token UK
-        string status
-        float classroomLat
-        float classroomLng
-        int classroomRadius
-        datetime createdAt
-    }
-
-    AttendanceRecord {
-        string id PK
-        string sessionId FK
-        string studentId FK
-        string status
-        datetime verifiedAt
-        float studentLat
-        float studentLng
-        float distanceMeters
-        datetime createdAt
-    }
-```
-
----
-
-## 🧪 Testing & Quality Assurance
-
-The application includes an extensive automated test suite covering unit, business logic, and parser testing:
+Attendly is thoroughly covered by automated unit and integration tests:
 
 ```bash
-# Run automated tests
+# Run unit test suites (Jest)
 npm test
 
-# Run code linter
+# Run ESLint validation
 npm run lint
 
-# Verify production build compilation
-npm run build
-```
+# Run classroom URL integration tests
+npx tsx scripts/test-classroom-urls.ts
 
-### Test Coverage Highlights:
-- **Excel Parser**: Tests standard headers, custom headers (`THE Name`, `imai`, `Groups`), Romanian headers (`Nume`, `Email`, `Grupa`), transposed horizontal layouts, email normalization, and row skipping.
-- **Attendance Verification**: Tests duplicate detection, group assignment validation, and status transitions.
-- **QR Generation**: Tests dynamic URL priority, Cloudflare tunnel overriding, and LAN IP fallback.
-- **Email Delivery**: Tests SMTP payload construction and developer mode fallbacks.
-
----
-
-## 📂 Project Structure
-
-```
-├── prisma/
-│   ├── schema.prisma              # Prisma ORM schema & entity models
-│   └── migrations/                # Database migration history
-├── public/                        # Static assets & icons
-├── scripts/
-│   ├── start-internet.js          # Next.js + Cloudflare Tunnel co-runner
-│   └── generate-pdf.js            # Standalone PDF documentation builder
-├── seed/
-│   ├── create-sample-excel.ts     # Sample student Excel generator
-│   ├── create-demo-excel.ts       # 60-student demo Excel generator
-│   └── students-sample.ts         # Database seeder script
-├── src/
-│   ├── app/
-│   │   ├── api/                   # 15 REST route handlers
-│   │   ├── attend/[token]/        # Student mobile attendance portal
-│   │   ├── dashboard/             # Professor administration panel
-│   │   │   ├── courses/           # Course management & Excel upload
-│   │   │   └── sessions/          # Live attendance & QR presentation
-│   │   ├── login/                 # Authentication portal
-│   │   └── verify/                # 2-step email verification landing
-│   ├── components/                # Reusable UI components & modals
-│   ├── lib/
-│   │   ├── auth.ts                # NextAuth v5 session config
-│   │   ├── email.ts               # Email transporter & templates
-│   │   ├── excel.ts               # ExcelJS parser & report generators
-│   │   ├── groups.ts              # Group string parser/formatter
-│   │   ├── prisma.ts              # Prisma singleton client
-│   │   └── qrcode.ts              # QR generation & URL resolution
-│   └── middleware.ts              # Route protection middleware
-├── tests/                         # Jest test suites
-├── start.bat                      # Windows all-in-one launcher
-├── stop.bat                       # Server stop utility
-└── unblock-firewall.bat           # Standalone firewall unblock script
+# Run complete end-to-end verification
+npx tsx scripts/verify-all.ts
 ```
 
 ---
 
-## 📜 License
+## 🤝 Contributing
 
-This project is licensed under the **MIT License**. You are free to use, modify, and distribute it for academic or commercial purposes.
+Contributions are warmly welcomed! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on code style, branch workflows, and submitting pull requests.
+
+---
+
+## 📄 License
+
+Attendly is licensed under the [MIT License](LICENSE). You are completely free to use, modify, and distribute it for personal, academic, or commercial purposes.
+
+---
+
+## 📚 Documentation
+
+- **Install and first-run tutorial:** [TUTORIAL.md](TUTORIAL.md)
+- **Day-to-day instructor guide:** [USER_GUIDE.md](USER_GUIDE.md)
+- **Technical reference and API overview:** [DOCS.md](DOCS.md)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
+
+The optional documentation site in `docs/` can be deployed with the workflow in `.github/workflows/pages.yml`. In the repository settings, enable GitHub Pages with **GitHub Actions** as its source. GitHub Pages hosts static documentation only; it does not run the Attendly app or database.
