@@ -41,6 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const dataToUpdate: Record<string, unknown> = {};
   if (typeof body.status === 'string') dataToUpdate.status = body.status;
   if (typeof body.name === 'string' && body.name.trim()) dataToUpdate.name = body.name.trim();
+  if (typeof body.classroom === 'string') dataToUpdate.classroom = body.classroom.trim();
   if (typeof body.hostLat === 'number') dataToUpdate.hostLat = body.hostLat;
   if (typeof body.hostLng === 'number') dataToUpdate.hostLng = body.hostLng;
   if (typeof body.hostCity === 'string') dataToUpdate.hostCity = body.hostCity.trim();

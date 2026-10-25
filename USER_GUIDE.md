@@ -19,10 +19,18 @@
 
 ## 1. Starting and Stopping the Application
 
-Attendly can be run either as a native desktop application (powered by Electron.js) or as a local web service.
+Attendly can be run either as an installed native desktop application (powered by Electron.js) or as a local web service.
 
-### Recommended: Native Desktop App (Electron.js)
-Attendly is packaged as a native desktop app with a dedicated window, custom icon, system tray menu, and automatic background server management:
+### 📦 1-Click Desktop Installer (Recommended)
+Attendly is packaged as a standalone 1-click desktop app:
+- **Windows**: Run **`Attendly Setup 1.0.0.exe`** (or double-click **`Install-Attendly-Windows.bat`**).
+  - Installs in one click without wizard dialogs.
+  - Automatically places a desktop shortcut and starts the application.
+- **macOS**: Double-click **`Install-Attendly-Mac.command`** in Finder (or download the DMG/PKG release).
+  - Installs Attendly directly into `/Applications` and launches it with 1 click.
+
+### Method 2: Native Desktop Launchers from Source (Electron.js)
+If running from the source folder without running the installer:
 - **1-Click Desktop Shortcut:** Double-click the **`Attendly`** shortcut on your Windows Desktop.
 - **Silent Launcher:** Double-click **`Launch-Attendly.vbs`** in this folder (launches cleanly without any console window).
 - **Direct Batch Launcher:** Double-click **`Attendly.bat`** in this folder.
@@ -32,7 +40,7 @@ Attendly is packaged as a native desktop app with a dedicated window, custom ico
   ```
 *When launched, Attendly displays a branded splash screen, starts the local engine and a Cloudflare tunnel, and opens a dedicated desktop window. The tunnel makes the app reachable over the public internet while active.*
 
-### Mode 2: Browser / Local Web Mode
+### Method 3: Browser / Local Web Mode
 - Double-click **`Open-Attendly-Browser.bat`** or **`start.bat`**:
   - Automatically ensures the server is running and opens **[http://localhost:3000](http://localhost:3000)** directly in your default web browser (Chrome, Edge, Firefox, etc.).
 - Or run in terminal:

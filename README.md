@@ -87,7 +87,23 @@ Attendly is designed for instructors and academic teams who want a practical alt
 
 > **App vs. documentation site:** The optional static guide is in [`docs/`](docs/index.html). The app itself must run on your computer or server; GitHub Pages cannot host its database or API.
 
-### Install from GitHub
+### 📦 1-Click Installers (Windows & macOS) — Recommended
+
+For the fastest, zero-command setup, use the pre-packaged one-click desktop installers:
+
+- **Windows**:
+  - Run **`Attendly Setup 1.0.0.exe`** (or double-click **`Install-Attendly-Windows.bat`** in the repository).
+  - Installs in 1 click, automatically creates desktop and start menu shortcuts, and launches Attendly.
+  - Zero terminal commands required!
+
+- **macOS (Apple Silicon & Intel)**:
+  - Download the **`Attendly-1.0.0.dmg`** or **`Attendly-1.0.0.pkg`** from GitHub Releases (or double-click **`Install-Attendly-Mac.command`** in the repository).
+  - Drag into `/Applications` or run the 1-click PKG installer.
+  - Open Attendly from Launchpad or Applications.
+
+---
+
+### Install from GitHub Source
 
 You can install the Attendly server on a Windows, macOS, or Linux computer. Install [Node.js 24 LTS](https://nodejs.org/) first. You can either clone the repository with Git or download and extract the ZIP from the green **Code** button on [GitHub](https://github.com/Gheorghe-dev/Attendly).
 

@@ -11,6 +11,14 @@ app.commandLine.appendSwitch('disable-gpu-compositing');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('no-sandbox');
 
+// Catch unhandled errors gracefully to eliminate Windows error dialog popups
+process.on('uncaughtException', (err) => {
+  console.error('[Electron] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Electron] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PORT = process.env.PORT || 3000;
 const SERVER_URL = `http://127.0.0.1:${PORT}`;
@@ -104,15 +112,21 @@ function checkServerReady(timeoutMs = 1500) {
 
 function freePort(port = PORT) {
   return new Promise((resolve) => {
-    if (process.platform === 'win32') {
-      exec(
-        `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
-        () => resolve()
-      );
-    } else {
-      exec(`lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1`, () => {
-        resolve();
-      });
+    try {
+      const execOpts = { cwd: getUserDataDir(), windowsHide: true };
+      if (process.platform === 'win32') {
+        exec(
+          `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
+          execOpts,
+          () => resolve()
+        );
+      } else {
+        exec(`lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1`, execOpts, () => {
+          resolve();
+        });
+      }
+    } catch {
+      resolve();
     }
   });
 }
@@ -169,6 +183,10 @@ async function startServer() {
     },
   });
 
+  proc.on('error', (err) => {
+    console.error('[Electron] Next.js server failed to spawn:', err);
+  });
+
   proc.stdout?.on('data', (d) => {
     const msg = d.toString();
     if (msg.includes('Ready') || msg.includes('Local:') || msg.includes('✓')) {
@@ -193,6 +211,7 @@ function startCloudflareTunnel() {
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
   const candidateBins = [
     path.join(process.resourcesPath || '', 'bin', binName),
+    path.join(getUserDataDir(), 'bin', binName),
     path.join(ROOT_DIR, 'bin', binName),
   ];
 
@@ -204,38 +223,54 @@ function startCloudflareTunnel() {
     }
   }
 
-  let proc;
-  if (localBin) {
-    console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
-    proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`], {
-      cwd: getUserDataDir(),
-      shell: false,
-      windowsHide: true,
-    });
-  } else {
-    const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-    proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`], {
-      cwd: ROOT_DIR,
-      shell: true,
-      windowsHide: true,
-    });
-  }
-
-  function handleData(data) {
-    const str = data.toString();
-    const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-    if (match && !tunnelUrl) {
-      tunnelUrl = match[0];
-      try {
-        fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8');
-      } catch {}
-      console.log('[Electron] Worldwide Tunnel active:', tunnelUrl);
-      updateTrayMenu();
+  let proc = null;
+  try {
+    if (localBin) {
+      console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
+      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+        cwd: getUserDataDir(),
+        shell: false,
+        windowsHide: true,
+      });
+    } else if (!app.isPackaged) {
+      // In development only, allow falling back to npx
+      const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+        cwd: getUserDataDir(),
+        shell: true,
+        windowsHide: true,
+      });
+    } else {
+      console.warn('[Electron] Cloudflare binary not bundled; tunnel inactive.');
+      return null;
     }
+
+    if (proc) {
+      proc.on('error', (err) => {
+        console.warn('[Electron] Cloudflare tunnel process error:', err.message);
+      });
+
+      function handleData(data) {
+        const str = data.toString();
+        const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+        if (match && !tunnelUrl) {
+          tunnelUrl = match[0];
+          try {
+            fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8');
+          } catch {}
+          console.log('[Electron] Worldwide Tunnel active:', tunnelUrl);
+          updateTrayMenu();
+        }
+      }
+
+      proc.stdout?.on('data', handleData);
+      proc.stderr?.on('data', handleData);
+    }
+  } catch (err) {
+    console.warn('[Electron] Could not launch tunnel:', err.message);
+    proc = null;
   }
 
-  proc.stdout?.on('data', handleData);
-  proc.stderr?.on('data', handleData);
   return proc;
 }
 
@@ -625,7 +660,9 @@ function cleanup() {
     if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
   } catch {}
   if (process.platform === 'win32') {
-    exec('taskkill /F /IM cloudflared.exe >nul 2>&1');
+    try {
+      exec('taskkill /F /IM cloudflared.exe >nul 2>&1', { cwd: getUserDataDir(), windowsHide: true });
+    } catch {}
   }
   if (tunnelProcess) {
     try { tunnelProcess.kill(); } catch {}

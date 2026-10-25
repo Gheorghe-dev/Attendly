@@ -114,8 +114,22 @@ async function startCloudflareTunnel(serverProc) {
   console.log('  Connecting secure Cloudflare Worldwide Tunnel...');
   console.log('  (Works on ALL phones, cellular 4G/5G, and any Wi-Fi network)\n');
 
-  const tunnel = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', 'http://localhost:3000'], {
-    shell: true,
+  const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
+  const localBin = path.join(__dirname, '..', 'bin', binName);
+
+  let tunnel;
+  if (fs.existsSync(localBin)) {
+    tunnel = spawn(localBin, ['tunnel', '--url', 'http://localhost:3000'], {
+      shell: false,
+    });
+  } else {
+    tunnel = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', 'http://localhost:3000'], {
+      shell: true,
+    });
+  }
+
+  tunnel.on('error', (err) => {
+    console.warn('  ⚠️ Cloudflare tunnel unavailable:', err.message);
   });
 
   let tunnelUrl = null;

@@ -80,6 +80,21 @@ The server can run on Windows, macOS, or Linux. Phones and tablets can use Atten
 
 ## 4. First-Time Launch (One-Click Setup)
 
+### 📦 Option 1: One-Click Desktop Installers (Recommended)
+
+No technical commands or prerequisites are needed when installing from release bundles:
+
+- **Windows**:
+  - Double-click **`Attendly Setup 1.0.0.exe`** (or run `Install-Attendly-Windows.bat` from source).
+  - Installs in 1-click directly into your user apps folder, creates an **Attendly** desktop shortcut, and opens the application immediately.
+- **macOS**:
+  - Open the **`Attendly-1.0.0.dmg`** and drag Attendly to `/Applications`, or double-click the **`Attendly-1.0.0.pkg`** installer.
+  - From source, simply double-click **`Install-Attendly-Mac.command`** in macOS Finder to install and launch Attendly.
+
+---
+
+### Option 2: Launchers from Source (Windows, macOS, Linux)
+
 The launchers can install dependencies, initialize the database, and build the app when those items are missing. Setup is not identical across platforms: review the environment file and set a real secret before exposing the app to a network. The Windows launchers copy `.env.example` but do not replace its sample `NEXTAUTH_SECRET`.
 
 #### Set your authentication secret on Windows

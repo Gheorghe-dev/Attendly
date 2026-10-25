@@ -493,13 +493,20 @@ Located in `scripts/start-internet.js`:
 
 ## 13. Multi-Platform Deployment & Containers
 
-### Windows
+### 1-Click Desktop Installers
+- **`Attendly Setup 1.0.0.exe`**: Built via NSIS with `oneClick: true`. Installs directly into user app directory without multi-step wizard, creates desktop shortcuts, and launches the app.
+- **`Install-Attendly-Windows.bat`**: 1-click script that launches the installer or packages it from source.
+- **`Install-Attendly-Mac.command`**: 1-click macOS script executable directly in Finder. Packages the standalone engine and installs Attendly directly into `/Applications`.
+- **`.github/workflows/build-installers.yml`**: Multi-platform CI pipeline building Windows NSIS (.exe), macOS DMG (.dmg), macOS Package (.pkg), and Linux AppImage (.AppImage).
+
+### Windows Launchers
 - **`Attendly.bat`**: Native Electron desktop app launcher.
 - **`start.bat`**: Firewall-configured web launcher with Cloudflare tunnel.
 - **`launch.bat`**: Universal terminal runner.
 - **`stop.bat`**: Process cleanup utility.
 
 ### macOS & Linux
+- **`Install-Attendly-Mac.command`**: macOS Finder 1-click installer to `/Applications`.
 - **`start.sh`**: Self-bootstrapping shell script.
 - **`stop.sh`**: Unix process killer.
 

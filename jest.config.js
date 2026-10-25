@@ -9,6 +9,7 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
+  modulePathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/release/'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testMatch: ['<rootDir>/tests/**/*.test.ts'],
 };

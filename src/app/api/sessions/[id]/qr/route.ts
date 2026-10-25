@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateQRCodeDataURL, getAttendanceUrl } from '@/lib/qrcode';
+import { slugifyClassroom } from '@/lib/classroom';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
@@ -23,13 +24,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const requestOrigin = hostHeader ? `${req.headers.get('x-forwarded-proto') ?? 'http'}://${hostHeader}` : '';
   const requestIsLocal = /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(requestOrigin);
 
-  const url = getAttendanceUrl(s.token, requestOrigin);
+  const classroomIdentifier = s.classroom ? slugifyClassroom(s.classroom) : s.token;
+  const url = getAttendanceUrl(classroomIdentifier, requestOrigin);
   const qr = await generateQRCodeDataURL(url);
 
   return NextResponse.json({
     qr,
     url,
     token: s.token,
+    classroom: s.classroom,
+    classroomSlug: s.classroom ? slugifyClassroom(s.classroom) : null,
     scannedFrom: requestOrigin || null,
     scannedFromLocalhost: requestIsLocal,
     baseUrl: url.split('/attend/')[0],

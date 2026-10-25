@@ -58,7 +58,10 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     }
 
     // 2. Predefined classroom & token lookup
-    const rawToken = params.token.trim();
+    let rawToken = params.token.trim();
+    try {
+      rawToken = decodeURIComponent(rawToken).trim();
+    } catch {}
     const tokenSlug = slugifyClassroom(rawToken);
     const classroomName = formatClassroomName(rawToken);
 
@@ -66,6 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       { token: rawToken },
       { token: tokenSlug },
       { classroom: rawToken },
+      { classroom: tokenSlug },
       { classroom: classroomName },
     ];
 
@@ -316,7 +320,10 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
-  const rawToken = params.token.trim();
+  let rawToken = params.token.trim();
+  try {
+    rawToken = decodeURIComponent(rawToken).trim();
+  } catch {}
   const tokenSlug = slugifyClassroom(rawToken);
   const classroomName = formatClassroomName(rawToken);
 
@@ -324,6 +331,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
     { token: rawToken },
     { token: tokenSlug },
     { classroom: rawToken },
+    { classroom: tokenSlug },
     { classroom: classroomName },
   ];
 

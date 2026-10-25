@@ -24,7 +24,11 @@ export const DEFAULT_CLASSROOM = 'Room 101';
  */
 export function slugifyClassroom(input?: string | null): string {
   if (!input || !input.trim()) return 'room-101';
-  const clean = input
+  let decoded = input;
+  try {
+    decoded = decodeURIComponent(input);
+  } catch {}
+  const clean = decoded
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '') // strip diacritics
     .toLowerCase()
@@ -39,13 +43,25 @@ export function slugifyClassroom(input?: string | null): string {
  */
 export function formatClassroomName(slugOrName?: string | null): string {
   if (!slugOrName || !slugOrName.trim()) return DEFAULT_CLASSROOM;
-  const trimmed = slugOrName.trim();
-  // If it's already nicely cased (e.g. "Room 101"), return it
+  let decoded = slugOrName;
+  try {
+    decoded = decodeURIComponent(slugOrName);
+  } catch {}
+  const trimmed = decoded.trim();
+
+  // If it matches a known university preset (case-insensitive or by slug), preserve exact official casing
+  const trimmedSlug = slugifyClassroom(trimmed);
+  const matchedPreset = PRESET_CLASSROOMS.find(
+    (p) => p.toLowerCase() === trimmed.toLowerCase() || slugifyClassroom(p) === trimmedSlug
+  );
+  if (matchedPreset) return matchedPreset;
+
+  // If it's already nicely cased with uppercase letters (e.g. "Biology Lab 2A"), return it
   if (/[A-Z]/.test(trimmed)) return trimmed;
 
   // Convert slug back to title case, e.g. "room-101" -> "Room 101"
   return trimmed
-    .split('-')
+    .split(/[-_ ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }

@@ -35,8 +35,12 @@
     "desktop:build": "npm run desktop:package && electron-builder --win",
     "desktop:build:win": "npm run desktop:package && electron-builder --win",
     "desktop:build:mac": "npm run desktop:package && electron-builder --mac",
-    "desktop:build:all": "npm run desktop:package && electron-builder -mw",
+    "desktop:build:linux": "npm run desktop:package && electron-builder --linux",
+    "desktop:build:all": "npm run desktop:package && electron-builder -mwl",
     "desktop:pack": "npm run desktop:package && electron-builder --dir",
+    "installer:win": "npm run desktop:build:win",
+    "installer:mac": "npm run desktop:build:mac",
+    "installer:all": "npm run desktop:build:all",
     "lint": "next lint",
     "test": "jest --passWithNoTests",
     "test:e2e": "tsx scripts/verify-all.ts",
@@ -52,12 +56,17 @@
     "appId": "org.attendly.desktop",
     "productName": "Attendly",
     "npmRebuild": false,
+    "afterPack": "scripts/after-pack.js",
     "extraMetadata": {
       "dependencies": {}
     },
     "directories": {
       "output": "release"
     },
+    "asarUnpack": [
+      "node_modules/prisma/**",
+      "node_modules/@prisma/engines/**"
+    ],
     "win": {
       "target": [
         "nsis"
@@ -67,16 +76,49 @@
     "mac": {
       "target": [
         "dmg",
+        "pkg",
         "zip"
       ],
       "icon": "public/emblem.png",
       "category": "public.app-category.education"
     },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "pkg": {
+      "installLocation": "/Applications",
+      "allowCurrentUserHome": true
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "public/icon.png",
+      "category": "Education"
+    },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
       "shortcutName": "Attendly",
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true
     },
     "files": [
       "electron/**/*",
@@ -87,7 +129,11 @@
     "extraResources": [
       {
         "from": ".next/standalone",
-        "to": "standalone"
+        "to": "standalone",
+        "filter": [
+          "**/*",
+          "node_modules/**"
+        ]
       },
       {
         "from": "prisma",

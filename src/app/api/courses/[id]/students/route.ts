@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const replace = formData.get('replace') === 'true';
 
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-  if (!file.name.endsWith('.xlsx')) return NextResponse.json({ error: 'Only .xlsx files are supported' }, { status: 400 });
+  if (!file.name.toLowerCase().endsWith('.xlsx')) return NextResponse.json({ error: 'Only .xlsx files are supported' }, { status: 400 });
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());

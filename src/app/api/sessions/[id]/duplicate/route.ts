@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (existingWithToken) {
     await prisma.session.update({
       where: { id: existingWithToken.id },
-      data: { token: `${classroomSlug}-${existingWithToken.id.slice(-6)}` },
+      data: { token: `${classroomSlug}-${existingWithToken.id}` },
     });
   }
 
