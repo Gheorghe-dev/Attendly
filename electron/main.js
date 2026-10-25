@@ -14,7 +14,49 @@ app.commandLine.appendSwitch('no-sandbox');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PORT = process.env.PORT || 3000;
 const SERVER_URL = `http://127.0.0.1:${PORT}`;
-const TUNNEL_FILE = path.join(ROOT_DIR, '.tunnel_url');
+
+function getUserDataDir() {
+  try {
+    return app.getPath('userData');
+  } catch {
+    return ROOT_DIR;
+  }
+}
+
+const TUNNEL_FILE = path.join(getUserDataDir(), '.tunnel_url');
+
+function getDatabaseUrl() {
+  const userData = getUserDataDir();
+  if (!fs.existsSync(userData)) {
+    try { fs.mkdirSync(userData, { recursive: true }); } catch {}
+  }
+  const targetDb = path.join(userData, 'attendly.db');
+
+  if (app.isPackaged) {
+    if (!fs.existsSync(targetDb)) {
+      const candidates = [
+        path.join(process.resourcesPath, 'prisma', 'dev.db'),
+        path.join(process.resourcesPath, 'standalone', 'prisma', 'dev.db'),
+        path.join(ROOT_DIR, 'prisma', 'dev.db'),
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          try {
+            fs.copyFileSync(c, targetDb);
+            console.log('[Electron] Initialized user database from', c);
+            break;
+          } catch (e) {
+            console.warn('[Electron] Could not seed database:', e.message);
+          }
+        }
+      }
+    }
+    return `file:${targetDb}`;
+  }
+
+  // Development mode fallback
+  return process.env.DATABASE_URL || `file:${path.join(ROOT_DIR, 'prisma', 'dev.db')}`;
+}
 
 // Set Application Name and Windows User Model ID
 app.setName('Attendly');
@@ -85,17 +127,46 @@ async function startServer() {
   await freePort(PORT);
   console.log('[Electron] Starting Next.js server on port', PORT);
 
-  const nextBin = path.join(ROOT_DIR, 'node_modules', 'next', 'dist', 'bin', 'next');
-  const isProd = fs.existsSync(path.join(ROOT_DIR, '.next', 'BUILD_ID'));
-  const args = isProd
-    ? [nextBin, 'start', '-H', '0.0.0.0', '-p', String(PORT)]
-    : [nextBin, 'dev', '-H', '0.0.0.0', '-p', String(PORT)];
+  const dbUrl = getDatabaseUrl();
 
-  const proc = spawn('node', args, {
-    cwd: ROOT_DIR,
+  let serverScript;
+  let serverCwd;
+  let serverArgs;
+
+  if (app.isPackaged) {
+    serverScript = path.join(process.resourcesPath, 'standalone', 'server.js');
+    serverCwd = path.join(process.resourcesPath, 'standalone');
+    serverArgs = [serverScript];
+  } else {
+    const standaloneScript = path.join(ROOT_DIR, '.next', 'standalone', 'server.js');
+    if (fs.existsSync(standaloneScript)) {
+      serverScript = standaloneScript;
+      serverCwd = path.join(ROOT_DIR, '.next', 'standalone');
+      serverArgs = [serverScript];
+    } else {
+      const nextBin = path.join(ROOT_DIR, 'node_modules', 'next', 'dist', 'bin', 'next');
+      const isProd = fs.existsSync(path.join(ROOT_DIR, '.next', 'BUILD_ID'));
+      serverScript = nextBin;
+      serverCwd = ROOT_DIR;
+      serverArgs = isProd
+        ? [nextBin, 'start', '-H', '0.0.0.0', '-p', String(PORT)]
+        : [nextBin, 'dev', '-H', '0.0.0.0', '-p', String(PORT)];
+    }
+  }
+
+  console.log('[Electron] Launching server with script:', serverScript);
+
+  const proc = spawn(process.execPath, serverArgs, {
+    cwd: serverCwd,
     shell: false,
     windowsHide: true,
-    env: { ...process.env, PORT: String(PORT) },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      HOSTNAME: '0.0.0.0',
+      DATABASE_URL: dbUrl,
+      ELECTRON_RUN_AS_NODE: '1', // Uses Electron's built-in Node runtime!
+    },
   });
 
   proc.stdout?.on('data', (d) => {
@@ -119,12 +190,36 @@ function startCloudflareTunnel() {
     if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
   } catch {}
 
-  const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`], {
-    cwd: ROOT_DIR,
-    shell: true,
-    windowsHide: true,
-  });
+  const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
+  const candidateBins = [
+    path.join(process.resourcesPath || '', 'bin', binName),
+    path.join(ROOT_DIR, 'bin', binName),
+  ];
+
+  let localBin = null;
+  for (const b of candidateBins) {
+    if (fs.existsSync(b)) {
+      localBin = b;
+      break;
+    }
+  }
+
+  let proc;
+  if (localBin) {
+    console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
+    proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+      cwd: getUserDataDir(),
+      shell: false,
+      windowsHide: true,
+    });
+  } else {
+    const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+      cwd: ROOT_DIR,
+      shell: true,
+      windowsHide: true,
+    });
+  }
 
   function handleData(data) {
     const str = data.toString();

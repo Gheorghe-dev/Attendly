@@ -30,9 +30,13 @@
     "start": "next start -H 0.0.0.0",
     "tunnel": "npx --yes localtunnel --port 3000",
     "desktop": "electron .",
-    "desktop:start": "npm run build && electron .",
-    "desktop:build": "electron-builder --win",
-    "desktop:pack": "electron-builder --dir",
+    "desktop:start": "npm run desktop:package && electron .",
+    "desktop:package": "npm run build && node scripts/prepare-standalone.js",
+    "desktop:build": "npm run desktop:package && electron-builder --win",
+    "desktop:build:win": "npm run desktop:package && electron-builder --win",
+    "desktop:build:mac": "npm run desktop:package && electron-builder --mac",
+    "desktop:build:all": "npm run desktop:package && electron-builder -mw",
+    "desktop:pack": "npm run desktop:package && electron-builder --dir",
     "lint": "next lint",
     "test": "jest --passWithNoTests",
     "test:e2e": "tsx scripts/verify-all.ts",
@@ -47,15 +51,26 @@
   "build": {
     "appId": "org.attendly.desktop",
     "productName": "Attendly",
+    "npmRebuild": false,
+    "extraMetadata": {
+      "dependencies": {}
+    },
     "directories": {
       "output": "release"
     },
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "icon": "attendly.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/emblem.png",
+      "category": "public.app-category.education"
     },
     "nsis": {
       "oneClick": false,
@@ -68,6 +83,20 @@
       "public/**/*",
       "attendly.ico",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "standalone"
+      },
+      {
+        "from": "prisma",
+        "to": "prisma"
+      },
+      {
+        "from": "bin",
+        "to": "bin"
+      }
     ]
   },
   "dependencies": {
@@ -117,6 +146,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "electron": "^44.9.1",
+    "electron-builder": "^26.18.0",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "jest": "^30.5.2",
