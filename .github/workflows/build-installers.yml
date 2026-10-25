@@ -1,7 +1,7 @@
 # ============================================================================
 # Attendly — Build Desktop Installers (Windows, macOS, Linux)
 # ============================================================================
-# Triggers on push to main with a version tag, or manually via workflow_dispatch.
+# Publishes installers on version tags; manual builds can optionally create a draft release.
 # Produces NSIS installer (.exe), macOS DMG (.dmg), and Linux AppImage.
 # Artifacts are uploaded to the GitHub Release automatically.
 
@@ -9,8 +9,6 @@ name: Build Desktop Installers
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -103,7 +101,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
           generate_release_notes: true
           files: dist/*
         env:

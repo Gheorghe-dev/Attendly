@@ -87,19 +87,15 @@ Attendly is designed for instructors and academic teams who want a practical alt
 
 > **App vs. documentation site:** The optional static guide is in [`docs/`](docs/index.html). The app itself must run on your computer or server; GitHub Pages cannot host its database or API.
 
-### 📦 1-Click Installers (Windows & macOS) — Recommended
+### 📦 Desktop Installers — Recommended
 
-For the fastest, zero-command setup, use the pre-packaged one-click desktop installers:
+Download a ready-to-run installer from the [latest Attendly GitHub Release](https://github.com/Gheorghe-dev/Attendly/releases/latest). You do **not** need to clone or download the source repository.
 
-- **Windows**:
-  - Run **`Attendly Setup 1.0.0.exe`** (or double-click **`Install-Attendly-Windows.bat`** in the repository).
-  - Installs in 1 click, automatically creates desktop and start menu shortcuts, and launches Attendly.
-  - Zero terminal commands required!
+- **Windows**: Download and run the `.exe` installer. It creates desktop and Start menu shortcuts and launches Attendly.
+- **macOS (Apple Silicon & Intel)**: Download the `.dmg` and move Attendly to Applications, or run the `.pkg` installer.
+- **Linux**: Download the `.AppImage`, make it executable if prompted, and launch it.
 
-- **macOS (Apple Silicon & Intel)**:
-  - Download the **`Attendly-1.0.0.dmg`** or **`Attendly-1.0.0.pkg`** from GitHub Releases (or double-click **`Install-Attendly-Mac.command`** in the repository).
-  - Drag into `/Applications` or run the 1-click PKG installer.
-  - Open Attendly from Launchpad or Applications.
+If a release has not been published yet, installers will appear on that page after the desktop build completes. Source-based installation instructions are below.
 
 ---
 
