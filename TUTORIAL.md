@@ -85,10 +85,10 @@ The server can run on Windows, macOS, or Linux. Phones and tablets can use Atten
 No technical commands or prerequisites are needed when installing from release bundles:
 
 - **Windows**:
-  - Double-click **`Attendly Setup 1.0.0.exe`** (or run `Install-Attendly-Windows.bat` from source).
+  - Download and run the latest `.exe` installer from [GitHub Releases](https://github.com/Gheorghe-dev/Attendly/releases/latest).
   - Installs in 1-click directly into your user apps folder, creates an **Attendly** desktop shortcut, and opens the application immediately.
 - **macOS**:
-  - Open the **`Attendly-1.0.0.dmg`** and drag Attendly to `/Applications`, or double-click the **`Attendly-1.0.0.pkg`** installer.
+  - Download the latest `.dmg` from [GitHub Releases](https://github.com/Gheorghe-dev/Attendly/releases/latest) and drag Attendly to `/Applications`, or use the `.pkg` installer.
   - From source, simply double-click **`Install-Attendly-Mac.command`** in macOS Finder to install and launch Attendly.
 
 ---

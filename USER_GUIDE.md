@@ -23,7 +23,7 @@ Attendly can be run either as an installed native desktop application (powered b
 
 ### 📦 1-Click Desktop Installer (Recommended)
 Attendly is packaged as a standalone 1-click desktop app:
-- **Windows**: Run **`Attendly Setup 1.0.0.exe`** (or double-click **`Install-Attendly-Windows.bat`**).
+- **Windows**: Download and run the latest `.exe` installer from [GitHub Releases](https://github.com/Gheorghe-dev/Attendly/releases/latest).
   - Installs in one click without wizard dialogs.
   - Automatically places a desktop shortcut and starts the application.
 - **macOS**: Double-click **`Install-Attendly-Mac.command`** in Finder (or download the DMG/PKG release).
