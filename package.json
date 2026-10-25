@@ -22,6 +22,7 @@
   ],
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "launch": "node scripts/start-internet.js",
     "start:all": "node scripts/start-internet.js",
     "app": "node scripts/start-internet.js",
@@ -136,12 +137,16 @@
         ]
       },
       {
-        "from": "prisma",
-        "to": "prisma"
+        "from": ".next/standalone/prisma/template.db",
+        "to": "prisma/template.db"
       },
       {
         "from": "bin",
-        "to": "bin"
+        "to": "bin",
+        "filter": [
+          "cloudflared",
+          "cloudflared.exe"
+        ]
       }
     ]
   },

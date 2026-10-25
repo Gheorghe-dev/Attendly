@@ -21,8 +21,14 @@ if not exist "node_modules\" (
 
 if not exist "prisma\dev.db" (
     echo [Attendly] Initializing database...
-    call npx prisma db push
+    if exist "prisma\template.db" (
+        copy "prisma\template.db" "prisma\dev.db" >nul
+    ) else (
+        call npx prisma db push
+    )
 )
+
+call npx prisma generate
 
 REM Ensure build exists for production performance
 if not exist ".next\BUILD_ID" (

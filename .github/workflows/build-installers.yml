@@ -58,6 +58,17 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
+      - name: Download Cloudflare binary for Windows and Linux
+        if: matrix.platform != 'mac'
+        run: |
+          mkdir -p bin
+          if [ "${{ matrix.platform }}" = "win" ]; then
+            curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -o bin/cloudflared.exe
+          else
+            curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o bin/cloudflared
+            chmod +x bin/cloudflared
+          fi
+
       - name: Build Next.js standalone
         run: npm run build
 
@@ -67,8 +78,18 @@ jobs:
       - name: Build Electron installer (${{ matrix.platform }})
         run: |
           if [ "${{ matrix.platform }}" = "mac" ]; then
-            npx electron-builder --mac --x64 --publish never
-            npx electron-builder --mac --arm64 --publish never
+            for arch in x64 arm64; do
+              if [ "$arch" = "x64" ]; then
+                cloudflared_arch=amd64
+              else
+                cloudflared_arch=arm64
+              fi
+              curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${cloudflared_arch}.tgz" -o /tmp/cloudflared.tgz
+              tar -xzf /tmp/cloudflared.tgz -C bin/
+              chmod +x bin/cloudflared
+              npx electron-builder --mac "--$arch" --publish never
+              rm -f bin/cloudflared
+            done
           else
             npx electron-builder --${{ matrix.platform }} --publish never
           fi

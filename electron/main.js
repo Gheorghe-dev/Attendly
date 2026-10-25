@@ -40,30 +40,45 @@ function getDatabaseUrl() {
   }
   const targetDb = path.join(userData, 'attendly.db');
 
-  if (app.isPackaged) {
-    if (!fs.existsSync(targetDb)) {
-      const candidates = [
-        path.join(process.resourcesPath, 'prisma', 'dev.db'),
-        path.join(process.resourcesPath, 'standalone', 'prisma', 'dev.db'),
-        path.join(ROOT_DIR, 'prisma', 'dev.db'),
-      ];
-      for (const c of candidates) {
-        if (fs.existsSync(c)) {
-          try {
+  // Check if database does not exist OR is empty / corrupted (less than 4KB)
+  let needSeed = !fs.existsSync(targetDb);
+  if (!needSeed) {
+    try {
+      const stat = fs.statSync(targetDb);
+      if (stat.size < 4096) needSeed = true;
+    } catch {
+      needSeed = true;
+    }
+  }
+
+  if (needSeed) {
+    const candidates = [
+      path.join(process.resourcesPath || '', 'prisma', 'template.db'),
+      path.join(process.resourcesPath || '', 'prisma', 'dev.db'),
+      path.join(process.resourcesPath || '', 'standalone', 'prisma', 'template.db'),
+      path.join(process.resourcesPath || '', 'standalone', 'prisma', 'dev.db'),
+      path.join(ROOT_DIR, 'prisma', 'template.db'),
+      path.join(ROOT_DIR, 'prisma', 'dev.db'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        try {
+          const stat = fs.statSync(c);
+          if (stat.size > 4096) {
             fs.copyFileSync(c, targetDb);
             console.log('[Electron] Initialized user database from', c);
             break;
-          } catch (e) {
-            console.warn('[Electron] Could not seed database:', e.message);
           }
+        } catch (e) {
+          console.warn('[Electron] Could not seed database from', c, e.message);
         }
       }
     }
-    return `file:${targetDb}`;
   }
 
-  // Development mode fallback
-  return process.env.DATABASE_URL || `file:${path.join(ROOT_DIR, 'prisma', 'dev.db')}`;
+  // Cross-platform SQLite URL with normalized forward slashes
+  const normalizedDb = targetDb.replace(/\\/g, '/');
+  return `file:${normalizedDb}`;
 }
 
 // Set Application Name and Windows User Model ID

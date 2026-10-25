@@ -8,10 +8,14 @@ echo          ATTENDLY — 1-CLICK WINDOWS INSTALLER
 echo ========================================================
 echo.
 
-REM 1. Check if the pre-built installer is present
-if exist "release\Attendly Setup 1.0.0.exe" (
+REM 1. Check if a pre-built installer is present
+set "INSTALLER="
+for %%F in ("release\Attendly Setup *.exe") do (
+    if exist "%%~fF" set "INSTALLER=%%~fF"
+)
+if defined INSTALLER (
     echo [1/1] Launching Attendly 1-Click Installer...
-    start "" "release\Attendly Setup 1.0.0.exe"
+    start "" "%INSTALLER%"
     exit /b 0
 )
 
@@ -39,18 +43,32 @@ if not exist "node_modules\" (
     call npm install
 )
 
+echo [*] Initializing database & Prisma engine...
+if not exist "prisma\dev.db" (
+    if exist "prisma\template.db" (
+        copy "prisma\template.db" "prisma\dev.db" >nul
+    ) else (
+        call npx prisma db push
+    )
+)
+call npx prisma generate
+
 echo [2/3] Preparing Next.js standalone engine...
 call npm run desktop:package
 
 echo [3/3] Building one-click installer...
 call npx electron-builder --win
 
-if exist "release\Attendly Setup 1.0.0.exe" (
+set "INSTALLER="
+for %%F in ("release\Attendly Setup *.exe") do (
+    if exist "%%~fF" set "INSTALLER=%%~fF"
+)
+if defined INSTALLER (
     echo.
     echo ========================================================
     echo  Installer generated! Launching installer now...
     echo ========================================================
-    start "" "release\Attendly Setup 1.0.0.exe"
+    start "" "%INSTALLER%"
 ) else (
     echo.
     echo [WARNING] Could not build setup binary. Starting Attendly desktop directly...

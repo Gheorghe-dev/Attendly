@@ -52,10 +52,15 @@ fi
 # 4. Initialize database
 if [ ! -f "prisma/dev.db" ]; then
     echo "🗄️ [3/5] Setting up local SQLite database..."
-    npx prisma db push
+    if [ -f "prisma/template.db" ]; then
+        cp prisma/template.db prisma/dev.db
+    else
+        npx prisma db push
+    fi
 else
     echo "✅ [3/5] Database ready."
 fi
+npx prisma generate
 
 # 5. Build application & package for macOS
 echo "⚡ [4/5] Compiling and packaging Attendly for macOS..."

@@ -48,8 +48,13 @@ fi
 # 4. Synchronize SQLite database schema
 if [ ! -f "prisma/dev.db" ]; then
     echo "🗄️ [3/4] Initializing local database schema..."
-    npx prisma db push
+    if [ -f "prisma/template.db" ]; then
+        cp prisma/template.db prisma/dev.db
+    else
+        npx prisma db push
+    fi
 fi
+npx prisma generate
 
 # 5. Compile production build if missing
 if [ ! -f ".next/BUILD_ID" ]; then
