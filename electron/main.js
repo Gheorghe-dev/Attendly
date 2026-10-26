@@ -185,6 +185,20 @@ async function startServer() {
 
   console.log('[Electron] Launching server with script:', serverScript);
 
+  // Ensure NextAuth has a persistent, secure secret across app launches
+  const secretFile = path.join(getUserDataDir(), '.auth_secret');
+  let authSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
+  if (!authSecret) {
+    if (fs.existsSync(secretFile)) {
+      try { authSecret = fs.readFileSync(secretFile, 'utf-8').trim(); } catch {}
+    }
+    if (!authSecret || authSecret.length < 16) {
+      const crypto = require('crypto');
+      authSecret = crypto.randomBytes(32).toString('base64url');
+      try { fs.writeFileSync(secretFile, authSecret, 'utf-8'); } catch {}
+    }
+  }
+
   const proc = spawn(process.execPath, serverArgs, {
     cwd: serverCwd,
     shell: false,
@@ -194,6 +208,10 @@ async function startServer() {
       PORT: String(PORT),
       HOSTNAME: '0.0.0.0',
       DATABASE_URL: dbUrl,
+      NEXTAUTH_SECRET: authSecret,
+      AUTH_SECRET: authSecret,
+      NEXTAUTH_URL: SERVER_URL,
+      AUTH_TRUST_HOST: 'true',
       ELECTRON_RUN_AS_NODE: '1', // Uses Electron's built-in Node runtime!
     },
   });
@@ -201,6 +219,14 @@ async function startServer() {
   proc.on('error', (err) => {
     console.error('[Electron] Next.js server failed to spawn:', err);
   });
+
+  // Pipe stdout and stderr to persistent log file in userData
+  try {
+    const logFile = path.join(getUserDataDir(), 'server.log');
+    const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+    proc.stdout?.pipe(logStream);
+    proc.stderr?.pipe(logStream);
+  } catch {}
 
   proc.stdout?.on('data', (d) => {
     const msg = d.toString();
