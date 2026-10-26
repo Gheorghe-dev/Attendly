@@ -344,11 +344,40 @@ function startCloudflareTunnel() {
         const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
         if (match && !tunnelUrl) {
           tunnelUrl = match[0];
-          try {
-            fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8');
-          } catch {}
           console.log('[Electron] Worldwide Tunnel active:', tunnelUrl);
+
+          // 1. Write to userData
+          try { fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8'); } catch {}
+
+          // 2. Also write to standalone cwd and ROOT_DIR so any process finds it
+          try {
+            if (serverCwd) fs.writeFileSync(path.join(serverCwd, '.tunnel_url'), tunnelUrl, 'utf-8');
+            fs.writeFileSync(path.join(ROOT_DIR, '.tunnel_url'), tunnelUrl, 'utf-8');
+          } catch {}
+
+          // 3. Notify Next.js server via HTTP POST so in-memory cache is instant
+          try {
+            const postData = JSON.stringify({ url: tunnelUrl });
+            const req = http.request(
+              `http://127.0.0.1:${PORT}/api/tunnel`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(postData),
+                },
+              },
+              () => {}
+            );
+            req.on('error', () => {});
+            req.write(postData);
+            req.end();
+          } catch {}
+
           updateTrayMenu();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.setTitle(`Attendly — 🌍 Accessible on any Wi-Fi: ${tunnelUrl}`);
+          }
         }
       }
 
@@ -506,7 +535,14 @@ function buildNativeMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Open in Chrome/Browser',
+          label: 'Open Public Worldwide Link in Browser',
+          click: () => {
+            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null) || SERVER_URL;
+            shell.openExternal(url);
+          },
+        },
+        {
+          label: 'Open Localhost in Browser',
           click: () => shell.openExternal(SERVER_URL),
         },
         { type: 'separator' },
@@ -616,10 +652,20 @@ function updateTrayMenu() {
     { label: '🎓 Attendly Desktop', enabled: false },
     { label: `Status: Running on Port ${PORT}`, enabled: false },
     {
-      label: currentTunnel ? `Tunnel: ${currentTunnel}` : 'Tunnel: Connecting…',
+      label: currentTunnel ? `🌍 Public: ${currentTunnel}` : '🌍 Connecting Worldwide Tunnel…',
       enabled: Boolean(currentTunnel),
       click: () => {
         if (currentTunnel) shell.openExternal(currentTunnel);
+      },
+    },
+    {
+      label: 'Copy Public Access Link',
+      enabled: Boolean(currentTunnel),
+      click: () => {
+        if (currentTunnel) {
+          const { clipboard } = require('electron');
+          clipboard.writeText(currentTunnel);
+        }
       },
     },
     { type: 'separator' },
@@ -636,7 +682,10 @@ function updateTrayMenu() {
     },
     {
       label: 'Open in Default Browser',
-      click: () => shell.openExternal(SERVER_URL),
+      click: () => {
+        const url = currentTunnel || SERVER_URL;
+        shell.openExternal(url);
+      },
     },
     { type: 'separator' },
     {
@@ -735,6 +784,22 @@ app.whenReady().then(async () => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.webContents.send('status-update', `Connecting to local engine (${i + 1}s)…`);
     }
+  }
+
+  // Allow up to 4 seconds for Worldwide Tunnel to connect before opening main window
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('status-update', 'Connecting worldwide tunnel for any Wi-Fi access…');
+  }
+  for (let j = 0; j < 8; j++) {
+    if (tunnelUrl) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send(
+      'status-update',
+      tunnelUrl ? 'Worldwide access active! Loading Attendly…' : 'Ready! Loading Attendly…'
+    );
   }
 
   createMainWindow();

@@ -137,6 +137,24 @@ export default function LiveSessionMonitorPage() {
     loadInitialData();
   }, [loadInitialData]);
 
+  // Automatically refresh QR code if it initially loaded with localhost, so students on any Wi-Fi can scan
+  useEffect(() => {
+    if (qrData?.url && (qrData.url.includes('localhost') || qrData.url.includes('127.0.0.1'))) {
+      const timer = setTimeout(async () => {
+        try {
+          const qrRes = await fetch(`/api/sessions/${id}/qr`);
+          if (qrRes.ok) {
+            const qData = await qrRes.json();
+            if (qData?.url && !qData.url.includes('localhost') && !qData.url.includes('127.0.0.1')) {
+              setQrData(qData);
+            }
+          }
+        } catch {}
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [id, qrData?.url]);
+
   // Silently refine host location from professor's browser if available
   useEffect(() => {
     if (typeof window === 'undefined' || !navigator.geolocation) return;
@@ -889,6 +907,26 @@ export default function LiveSessionMonitorPage() {
                 )}
                 <span>{copiedLink ? 'Copied URL' : 'Copy student direct URL'}</span>
               </button>
+
+              {qrData?.url && (
+                <div className="pt-1.5 border-t border-border/50">
+                  <span className="text-[11px] font-mono flex items-center justify-center gap-1">
+                    {qrData.url.includes('trycloudflare.com') ? (
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                        🌍 Accessible from ANY Wi-Fi & 4G/5G
+                      </span>
+                    ) : !qrData.url.includes('localhost') && !qrData.url.includes('127.0.0.1') ? (
+                      <span className="text-sky-600 dark:text-sky-400 font-medium">
+                        📶 Accessible on local Wi-Fi
+                      </span>
+                    ) : (
+                      <span className="text-amber-500 font-medium">
+                        ⚠️ Connecting tunnel for worldwide Wi-Fi access…
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
           </Card>
 

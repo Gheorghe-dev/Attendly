@@ -3,22 +3,62 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 
+let memoryTunnelUrl: string | null = null;
+
+export function setMemoryTunnelUrl(url: string | null) {
+  memoryTunnelUrl = url;
+}
+
 export function getTunnelUrl(): string | null {
   if (process.env.NODE_ENV === 'test') return null;
+
+  // 1. In-memory cached URL (fastest & most up-to-date)
+  if (memoryTunnelUrl && memoryTunnelUrl.startsWith('http')) {
+    return memoryTunnelUrl;
+  }
+
+  // 2. Direct environment variable
+  if (process.env.PUBLIC_TUNNEL_URL?.startsWith('http')) {
+    return process.env.PUBLIC_TUNNEL_URL.trim();
+  }
+  if (process.env.TUNNEL_URL?.startsWith('http')) {
+    return process.env.TUNNEL_URL.trim();
+  }
+
+  // 3. Scan candidate disk paths across Windows, macOS, and Linux
+  const candidates: string[] = [
+    path.join(process.cwd(), '.tunnel_url'),
+    path.join(process.cwd(), '..', '.tunnel_url'),
+  ];
+
   try {
-    const p = path.join(process.cwd(), '.tunnel_url');
-    if (fs.existsSync(p)) {
-      const stat = fs.statSync(p);
-      // Cloudflare tunnels expire in 24 hours. If older than 12 hours, ignore and delete.
-      const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
-      if (ageHours > 12) {
-        try { fs.unlinkSync(p); } catch {}
-        return null;
-      }
-      const content = fs.readFileSync(p, 'utf-8').trim();
-      if (content && content.startsWith('http')) return content;
+    const home = os.homedir();
+    if (process.platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+      candidates.push(path.join(appData, 'Attendly', '.tunnel_url'));
+    } else if (process.platform === 'darwin') {
+      candidates.push(path.join(home, 'Library', 'Application Support', 'Attendly', '.tunnel_url'));
+    } else {
+      candidates.push(path.join(home, '.config', 'Attendly', '.tunnel_url'));
     }
   } catch {}
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        const stat = fs.statSync(p);
+        const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
+        if (ageHours <= 24) {
+          const content = fs.readFileSync(p, 'utf-8').trim();
+          if (content && content.startsWith('http')) {
+            memoryTunnelUrl = content;
+            return content;
+          }
+        }
+      }
+    } catch {}
+  }
+
   return null;
 }
 

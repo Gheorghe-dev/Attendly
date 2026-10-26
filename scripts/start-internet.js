@@ -142,7 +142,36 @@ async function startCloudflareTunnel(serverProc) {
     const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
     if (match && !tunnelUrl) {
       tunnelUrl = match[0];
-      fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8');
+      try { fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8'); } catch {}
+      try {
+        const home = require('os').homedir();
+        const appData = process.platform === 'win32'
+          ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'))
+          : process.platform === 'darwin'
+          ? path.join(home, 'Library', 'Application Support')
+          : path.join(home, '.config');
+        const attendlyDir = path.join(appData, 'Attendly');
+        if (!fs.existsSync(attendlyDir)) fs.mkdirSync(attendlyDir, { recursive: true });
+        fs.writeFileSync(path.join(attendlyDir, '.tunnel_url'), tunnelUrl, 'utf-8');
+      } catch {}
+
+      try {
+        const postData = JSON.stringify({ url: tunnelUrl });
+        const req = http.request(
+          'http://127.0.0.1:3000/api/tunnel',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData),
+            },
+          },
+          () => {}
+        );
+        req.on('error', () => {});
+        req.write(postData);
+        req.end();
+      } catch {}
 
       console.log('\n  ╔══════════════════════════════════════════════════════════════════════╗');
       console.log('  ║                   ATTENDLY — SMART ATTENDANCE ACTIVE                 ║');

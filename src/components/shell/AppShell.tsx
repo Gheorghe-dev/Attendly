@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/branding/Logo';
 import { ThemeToggle } from '@/components/shell/ThemeToggle';
+import { NetworkStatusPill } from '@/components/shell/NetworkStatusPill';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
@@ -267,6 +268,7 @@ export function AppShell({ children, user }: AppShellProps) {
             </div>
 
             <div className="flex items-center gap-3">
+              <NetworkStatusPill />
               <ThemeToggle />
 
               <Link href="/dashboard/courses">

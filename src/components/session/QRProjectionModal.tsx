@@ -224,6 +224,14 @@ export function QRProjectionModal({
             <p className="font-mono text-xs text-[#EDE9E0] font-semibold truncate bg-white/5 p-2 rounded-input border border-white/10">
               {publicUrl}
             </p>
+            <div className="mt-1 text-[10px] font-mono text-emerald-400/90 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>
+                {publicUrl.includes('trycloudflare.com')
+                  ? 'Accessible from ANY Wi-Fi network or 4G/5G mobile data'
+                  : 'Accessible on local Wi-Fi network'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
