@@ -60,6 +60,7 @@ jobs:
 
       - name: Download Cloudflare binary for Windows and Linux
         if: matrix.platform != 'mac'
+        shell: bash
         run: |
           mkdir -p bin
           if [ "${{ matrix.platform }}" = "win" ]; then
