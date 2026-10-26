@@ -2,7 +2,7 @@
 # Attendly — Build Desktop Installers (Windows, macOS, Linux)
 # ============================================================================
 # Publishes installers on version tags; manual builds can optionally create a draft release.
-# Produces NSIS installer (.exe), macOS DMG (.dmg), and Linux AppImage.
+# Produces NSIS installer (.exe), macOS DMG (.dmg), and Linux AppImage/.deb packages.
 # Artifacts are uploaded to the GitHub Release automatically.
 
 name: Build Desktop Installers

@@ -595,7 +595,7 @@ function buildNativeMenu() {
               type: 'info',
               title: 'Attendly',
               message: 'Attendly — Desktop Edition',
-              detail: 'Version 1.0.3\nNext.js 14 + Electron Desktop Runtime\nZero-config local server & Cloudflare tunnel.\nDesigned for university lectures & labs.',
+              detail: `Version ${app.getVersion()}\nNext.js 14 + Electron Desktop Runtime\nZero-config local server & Cloudflare tunnel.\nDesigned for university lectures & labs.`,
             });
           },
         },

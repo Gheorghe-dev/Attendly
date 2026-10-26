@@ -1,9 +1,12 @@
 {
   "name": "attendly",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Self-hosted academic attendance management with QR check-ins, course rosters, and Excel reports.",
   "license": "MIT",
-  "author": "Attendly Open Source Community",
+  "author": {
+    "name": "Attendly Open Source Community",
+    "email": "203681965+Gheorghe-dev@users.noreply.github.com"
+  },
   "homepage": "https://github.com/Gheorghe-dev/Attendly",
   "repository": {
     "type": "git",
