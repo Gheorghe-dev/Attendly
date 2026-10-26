@@ -119,6 +119,9 @@ async function startCloudflareTunnel(serverProc) {
 
   let tunnel;
   if (fs.existsSync(localBin)) {
+    if (process.platform !== 'win32') {
+      try { fs.chmodSync(localBin, 0o755); } catch {}
+    }
     tunnel = spawn(localBin, ['tunnel', '--url', 'http://localhost:3000'], {
       shell: false,
     });

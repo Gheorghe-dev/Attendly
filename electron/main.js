@@ -2,16 +2,23 @@ const { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain, session } =
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const { spawn, exec } = require('child_process');
 
-// Disable hardware acceleration to eliminate Windows GPU process crash (exit code -1073741819 / 0xC0000005)
+// Set Application Name and Windows User Model ID early
+app.setName('Attendly');
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.attendly.app');
+}
+
+// Disable hardware acceleration to eliminate Windows/Linux GPU process crashes
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-gpu-compositing');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('no-sandbox');
 
-// Catch unhandled errors gracefully to eliminate Windows error dialog popups
+// Catch unhandled errors gracefully to eliminate error dialog popups
 process.on('uncaughtException', (err) => {
   console.error('[Electron] Uncaught Exception:', err);
 });
@@ -20,8 +27,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const ROOT_DIR = path.resolve(__dirname, '..');
-const PORT = process.env.PORT || 3000;
-const SERVER_URL = `http://127.0.0.1:${PORT}`;
+let PORT = Number(process.env.PORT) || 3000;
+let SERVER_URL = `http://127.0.0.1:${PORT}`;
 
 function getUserDataDir() {
   try {
@@ -81,12 +88,6 @@ function getDatabaseUrl() {
   return `file:${normalizedDb}`;
 }
 
-// Set Application Name and Windows User Model ID
-app.setName('Attendly');
-if (process.platform === 'win32') {
-  app.setAppUserModelId('com.attendly.app');
-}
-
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
@@ -112,13 +113,22 @@ if (!gotTheLock) {
   });
 }
 
-function checkServerReady(timeoutMs = 1500) {
+function checkServerReady(portOrTimeout, timeoutMs = 1500) {
+  let targetPort = PORT;
+  let tMs = timeoutMs;
+  if (typeof portOrTimeout === 'number') {
+    if (portOrTimeout < 1000) {
+      tMs = portOrTimeout;
+    } else {
+      targetPort = portOrTimeout;
+    }
+  }
   return new Promise((resolve) => {
-    const req = http.get(`${SERVER_URL}/api/health`, (res) => {
+    const req = http.get(`http://127.0.0.1:${targetPort}/api/health`, (res) => {
       resolve(res.statusCode === 200 || res.statusCode === 307 || res.statusCode === 302);
     });
     req.on('error', () => resolve(false));
-    req.setTimeout(timeoutMs, () => {
+    req.setTimeout(tMs, () => {
       req.destroy();
       resolve(false);
     });
@@ -136,9 +146,11 @@ function freePort(port = PORT) {
           () => resolve()
         );
       } else {
-        exec(`lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1`, execOpts, () => {
-          resolve();
-        });
+        exec(
+          `lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1 || fuser -k ${port}/tcp >/dev/null 2>&1 || true`,
+          execOpts,
+          () => resolve()
+        );
       }
     } catch {
       resolve();
@@ -146,14 +158,47 @@ function freePort(port = PORT) {
   });
 }
 
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.once('error', () => resolve(false));
+    tester.once('listening', () => {
+      tester.close(() => resolve(true));
+    });
+    tester.listen(port, '127.0.0.1');
+  });
+}
+
+async function resolveUsablePort(preferredPort = 3000) {
+  // If Attendly is already responding on preferredPort, keep it
+  const isRunning = await checkServerReady(preferredPort, 600);
+  if (isRunning) return preferredPort;
+
+  // Try freeing the preferred port
+  await freePort(preferredPort);
+  const available = await isPortAvailable(preferredPort);
+  if (available) return preferredPort;
+
+  // Search next available ports if preferred port remains blocked
+  for (let p = preferredPort + 1; p <= preferredPort + 20; p++) {
+    const pRunning = await checkServerReady(p, 400);
+    if (pRunning) return p;
+    const isAvail = await isPortAvailable(p);
+    if (isAvail) {
+      console.log(`[Electron] Port ${preferredPort} is busy. Switched to port ${p}`);
+      return p;
+    }
+  }
+  return preferredPort;
+}
+
 async function startServer() {
-  const isRunning = await checkServerReady();
+  const isRunning = await checkServerReady(PORT);
   if (isRunning) {
     console.log('[Electron] Server already running on port', PORT);
     return null;
   }
 
-  await freePort(PORT);
   console.log('[Electron] Starting Next.js server on port', PORT);
 
   const dbUrl = getDatabaseUrl();
@@ -267,6 +312,9 @@ function startCloudflareTunnel() {
   let proc = null;
   try {
     if (localBin) {
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(localBin, 0o755); } catch {}
+      }
       console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
       proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`], {
         cwd: getUserDataDir(),
@@ -547,7 +595,7 @@ function buildNativeMenu() {
               type: 'info',
               title: 'Attendly',
               message: 'Attendly — Desktop Edition',
-              detail: 'Version 0.1.0\nNext.js 14 + Electron Desktop Runtime\nZero-config local server & Cloudflare tunnel.\nDesigned for university lectures & labs.',
+              detail: 'Version 1.0.3\nNext.js 14 + Electron Desktop Runtime\nZero-config local server & Cloudflare tunnel.\nDesigned for university lectures & labs.',
             });
           },
         },
@@ -639,6 +687,10 @@ ipcMain.on('window-close', () => mainWindow?.close());
 
 // App Lifecycle
 app.whenReady().then(async () => {
+  // Dynamically resolve an open usable port if default 3000 is occupied
+  PORT = await resolveUsablePort(PORT);
+  SERVER_URL = `http://127.0.0.1:${PORT}`;
+
   // Allow geolocation and essential web permissions on PC without blocking
   if (session && session.defaultSession) {
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {

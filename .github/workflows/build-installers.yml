@@ -105,6 +105,7 @@ jobs:
             release/${{ matrix.artifact_glob }}
             release/*.pkg
             release/*.zip
+            release/*.deb
             release/*.blockmap
             release/latest*.yml
           retention-days: 30

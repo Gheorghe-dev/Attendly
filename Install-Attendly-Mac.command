@@ -84,6 +84,8 @@ fi
 if [ -n "$APP_BUNDLE" ]; then
     rm -rf "/Applications/Attendly.app"
     cp -R "$APP_BUNDLE" "/Applications/Attendly.app"
+    xattr -cr "/Applications/Attendly.app" 2>/dev/null || true
+    chmod -R +x "/Applications/Attendly.app/Contents/MacOS" 2>/dev/null || true
     echo ""
     echo "========================================================"
     echo "🎉 SUCCESS: Attendly is now installed in /Applications!"

@@ -1,6 +1,6 @@
 {
   "name": "attendly",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Self-hosted academic attendance management with QR check-ins, course rosters, and Excel reports.",
   "license": "MIT",
   "author": "Attendly Open Source Community",
@@ -81,7 +81,10 @@
         "zip"
       ],
       "icon": "public/emblem.png",
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "gatekeeperAssess": false,
+      "hardenedRuntime": false,
+      "identity": null
     },
     "dmg": {
       "contents": [
@@ -107,10 +110,15 @@
     },
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
       "icon": "public/icon.png",
       "category": "Education"
+    },
+    "deb": {
+      "packageCategory": "education",
+      "priority": "optional"
     },
     "nsis": {
       "oneClick": true,

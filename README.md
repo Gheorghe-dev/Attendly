@@ -1,7 +1,7 @@
 # 🎓 Attendly — Academic Attendance Tracking System
 
 <p align="center">
-  <strong>An open-source QR attendance app for instructors who want to manage courses, check-ins, and attendance reports from their own computer or server.</strong>
+  <strong>A self-hosted attendance platform for universities and classrooms. Manage courses, run live QR check-ins, and export Excel reports from a desktop, server, or Docker deployment.</strong>
 </p>
 
 <p align="center">
@@ -39,13 +39,15 @@
 
 ## 🌟 Overview
 
-**Attendly** helps instructors manage course rosters and record attendance in lectures, seminars, and laboratory classes. Instructors create a course, import a student roster, open a session, and display its QR code for students to check in.
+**Attendly** is an open-source attendance platform for university instructors and academic teams. Manage course rosters, open attendance sessions, let students check in by scanning a QR code, monitor submissions live, and export organized Excel reports.
 
-The web app and SQLite database can run on an instructor's computer or a self-managed server. If you use the optional Cloudflare Quick Tunnel or IP-based location fallback, some network traffic or IP address data is handled by those external services. Review your institution's privacy requirements before using real student data.
+Run Attendly as a web app on your own computer or server, as a native desktop app for Windows, macOS, or Linux, or with Docker. Attendance records use SQLite; desktop installations keep their working database in the operating system's application-data folder, while server and Docker deployments use the database path or persistent volume configured for that deployment. This gives operators control over where records are stored, while still requiring them to manage backups and access.
+
+If you use the optional Cloudflare Quick Tunnel or IP-based location fallback, some network traffic or IP address data is handled by those external services. Review your institution's privacy requirements before using real student data.
 
 ## 🎤 App Presentation
 
-**Attendly turns classroom attendance into a simple, repeatable workflow.** An instructor creates a course, imports its student roster, and opens a session for a class meeting. Students scan the session's QR code on their phones and submit a check-in; the instructor can follow submissions live, close or reopen the session, and export the resulting records to Excel.
+**Attendly turns classroom attendance into a simple, repeatable workflow.** An instructor creates a course, imports or enters its student roster, and opens a session for a class meeting. Students scan the session's QR code on their phones and submit a check-in; the instructor can follow submissions live, close or reopen the session, and export the resulting records to Excel.
 
 ### A typical class session
 
@@ -55,7 +57,7 @@ The web app and SQLite database can run on an instructor's computer or a self-ma
 4. **Monitor participation:** Review incoming check-ins in the live dashboard and manage the session.
 5. **Keep the record:** Export a session report or a course attendance matrix for follow-up.
 
-Attendly is designed for instructors and academic teams who want a practical alternative to paper sign-in sheets, without requiring dedicated classroom scanning hardware. It can run as a web app or a Windows desktop app, with Docker available for self-managed deployments. Attendance and location signals are intended to assist classroom workflows; they do not independently verify a student's identity or physical presence.
+Attendly is designed for instructors and academic teams who want a practical alternative to paper sign-in sheets, without requiring dedicated classroom scanning hardware. Students use a phone browser; instructors can use the web dashboard or a native desktop installer. Deployments can be local, self-hosted, or Docker-based. Attendance and location signals are intended to assist classroom workflows; they do not independently verify a student's identity or physical presence.
 
 ---
 
@@ -89,11 +91,15 @@ Attendly is designed for instructors and academic teams who want a practical alt
 
 ### 📦 Desktop Installers — Recommended
 
-Download a ready-to-run installer from the [latest Attendly GitHub Release](https://github.com/Gheorghe-dev/Attendly/releases/latest). You do **not** need to clone or download the source repository.
+Download a ready-to-run installer from the [latest Attendly GitHub Release](https://github.com/Gheorghe-dev/Attendly/releases/latest). You do **not** need to clone the repository or install Node.js.
 
-- **Windows**: Download and run the `.exe` installer. It creates desktop and Start menu shortcuts and launches Attendly.
-- **macOS (Apple Silicon & Intel)**: Download the `.dmg` and move Attendly to Applications, or run the `.pkg` installer.
-- **Linux**: Download the `.AppImage`, make it executable if prompted, and launch it.
+- **Windows (10 / 11)**: Download and run `Attendly Setup 1.0.x.exe`. Installs cleanly with 1 click without requiring administrator elevation, creates Desktop and Start Menu shortcuts, and launches automatically.
+- **macOS (Apple Silicon M1/M2/M3/M4 & Intel)**:
+  - Download `Attendly-1.0.x.dmg` and drag `Attendly.app` to `/Applications` (or run the native `.pkg` installer).
+  - *Gatekeeper note:* If macOS displays an unverified developer prompt on first launch, right-click `Attendly.app` → select **Open**, or run `xattr -cr /Applications/Attendly.app` in Terminal.
+- **Linux (Ubuntu, Debian, Fedora, Arch, Mint)**:
+  - **Debian / Ubuntu / Mint**: Download and install `attendly_1.0.x_amd64.deb` (`sudo dpkg -i attendly_1.0.x_amd64.deb`).
+  - **Universal AppImage**: Download `Attendly-1.0.x.AppImage`, make it executable (`chmod +x Attendly*.AppImage`), and double-click to run.
 
 If a release has not been published yet, installers will appear on that page after the desktop build completes. Source-based installation instructions are below.
 
@@ -280,8 +286,9 @@ Attendly features a tolerant parser that reads your existing university spreadsh
 │               Host Computer (Instructor)               │
 │                                                        │
 │  ┌──────────────────────┐    ┌──────────────────────┐  │
-│  │ Next.js 14 Web / API │<-->│ SQLite Database      │  │
-│  │ (Port 3000)          │    │ (prisma/dev.db)      │  │
+│  │ Next.js Web / API    │<-->│ SQLite Database      │  │
+│  │ (Port 3000)          │    │ Server: configured   │  │
+│  │                      │    │ Desktop: app data    │  │
 │  └──────────┬───────────┘    └──────────────────────┘  │
 └─────────────┼──────────────────────────────────────────┘
               │
