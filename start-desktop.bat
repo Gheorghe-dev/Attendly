@@ -8,6 +8,8 @@ setlocal
 cd /d "%~dp0"
 title QR Attendance Desktop
 
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue" >nul 2>&1
+
 echo.
 echo   ==================================================================
 echo               QR ATTENDANCE SYSTEM - DESKTOP EDITION

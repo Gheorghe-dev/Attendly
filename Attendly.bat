@@ -3,6 +3,8 @@ setlocal
 cd /d "%~dp0"
 title Attendly Desktop
 
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue" >nul 2>&1
+
 where node >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERROR] Node.js is required. Download from https://nodejs.org/

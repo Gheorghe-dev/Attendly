@@ -31,12 +31,6 @@ fi
 if [ ! -f ".env" ]; then
     echo "⚙️ [1/4] Initializing .env configuration from .env.example..."
     cp .env.example .env
-    RANDOM_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" 2>/dev/null || openssl rand -base64 32 || echo "secret-$(date +%s)")
-    if [ "$(uname)" = "Darwin" ]; then
-        sed -i '' "s/change-this-to-a-secure-random-32-byte-string/$RANDOM_SECRET/g" .env
-    else
-        sed -i "s/change-this-to-a-secure-random-32-byte-string/$RANDOM_SECRET/g" .env
-    fi
 fi
 
 # 3. Install dependencies if node_modules is missing

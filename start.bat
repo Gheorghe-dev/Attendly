@@ -34,6 +34,8 @@ if %errorLevel% neq 0 (
 )
 
 REM --- Step 3: Self-bootstrap on first run -----------------------------------
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue" >nul 2>&1
+
 if not exist ".env" (
     echo   [1/6] Creating .env configuration...
     copy ".env.example" ".env" >nul

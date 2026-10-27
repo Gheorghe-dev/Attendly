@@ -11,19 +11,25 @@ function ensurePrerequisites() {
   const envExamplePath = path.join(process.cwd(), '.env.example');
   if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
     console.log('  [Setup] Initializing .env configuration...');
-    let envContent = fs.readFileSync(envExamplePath, 'utf-8');
-    const secret = require('crypto').randomBytes(32).toString('base64');
-    envContent = envContent.replace('change-this-to-a-secure-random-32-byte-string', secret);
-    fs.writeFileSync(envPath, envContent, 'utf-8');
+    fs.copyFileSync(envExamplePath, envPath);
   }
 
   const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+  const templatePath = path.join(process.cwd(), 'prisma', 'template.db');
   if (!fs.existsSync(dbPath)) {
     console.log('  [Setup] Initializing local database schema...');
-    try {
-      execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
-    } catch {
-      console.warn('  [Setup] Database initialization will proceed on next step.');
+    if (fs.existsSync(templatePath)) {
+      try {
+        fs.copyFileSync(templatePath, dbPath);
+        console.log('  [Setup] Initialized database from pre-configured template.');
+      } catch {}
+    }
+    if (!fs.existsSync(dbPath)) {
+      try {
+        execSync('npx prisma db push --skip-generate', { stdio: 'inherit' });
+      } catch {
+        console.warn('  [Setup] Database initialization will proceed on next step.');
+      }
     }
   }
 }
@@ -38,7 +44,7 @@ function checkServerReady(port = 3000) {
       resolve(true);
     });
     req.on('error', () => resolve(false));
-    req.setTimeout(1500, () => { req.destroy(); resolve(false); });
+    req.setTimeout(3500, () => { req.destroy(); resolve(false); });
   });
 }
 
@@ -144,13 +150,20 @@ async function startCloudflareTunnel(serverProc) {
   });
 
   let tunnelUrl = null;
+  let outputBuffer = '';
 
   function handleData(data) {
     const str = data.toString();
-    const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+    outputBuffer += str;
+    const match = outputBuffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
     if (match && !tunnelUrl) {
       tunnelUrl = match[0];
-      try { fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8'); } catch {}
+      const candidatePaths = [
+        TUNNEL_FILE,
+        path.join(process.cwd(), '.tunnel_url'),
+        path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
+        path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
+      ];
       try {
         const home = require('os').homedir();
         const appData = process.platform === 'win32'
@@ -160,8 +173,12 @@ async function startCloudflareTunnel(serverProc) {
           : path.join(home, '.config');
         const attendlyDir = path.join(appData, 'Attendly');
         if (!fs.existsSync(attendlyDir)) fs.mkdirSync(attendlyDir, { recursive: true });
-        fs.writeFileSync(path.join(attendlyDir, '.tunnel_url'), tunnelUrl, 'utf-8');
+        candidatePaths.push(path.join(attendlyDir, '.tunnel_url'));
       } catch {}
+
+      for (const p of candidatePaths) {
+        try { fs.writeFileSync(p, tunnelUrl, 'utf-8'); } catch {}
+      }
 
       try {
         const postData = JSON.stringify({ url: tunnelUrl });

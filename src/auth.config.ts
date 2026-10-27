@@ -2,7 +2,7 @@ import type { NextAuthConfig } from 'next-auth';
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || 'attendly-standalone-encryption-secret-minimum-32-characters-token',
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || 'attendly-app-secure-default-encryption-secret-32-bytes',
   pages: {
     signIn: '/login',
   },

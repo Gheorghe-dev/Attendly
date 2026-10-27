@@ -185,9 +185,26 @@ export function ensureCloudflareTunnel(): void {
         isStartingTunnel = false;
         console.log('[QR/Cloudflare] Worldwide Cloudflare Tunnel active for QR codes:', url);
         if (fsMod) {
+          const candidatePaths = [
+            path.join(process.cwd(), '.tunnel_url'),
+            path.join(path.resolve(os.tmpdir()), '.attendly_tunnel'),
+            path.join(path.resolve(os.homedir()), '.attendly_tunnel'),
+          ];
           try {
-            fsMod.writeFileSync(path.join(process.cwd(), '.tunnel_url'), url, 'utf-8');
+            const home = os.homedir();
+            const appData = process.platform === 'win32'
+              ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'))
+              : process.platform === 'darwin'
+              ? path.join(home, 'Library', 'Application Support')
+              : path.join(home, '.config');
+            const attendlyDir = path.join(appData, 'Attendly');
+            if (!fsMod.existsSync(attendlyDir)) fsMod.mkdirSync(attendlyDir, { recursive: true });
+            candidatePaths.push(path.join(attendlyDir, '.tunnel_url'));
           } catch {}
+
+          for (const p of candidatePaths) {
+            try { fsMod.writeFileSync(p, url, 'utf-8'); } catch {}
+          }
         }
       }
     };
@@ -212,7 +229,7 @@ export function ensureCloudflareTunnel(): void {
 /**
  * Asynchronously wait up to maxWaitMs for the Cloudflare tunnel URL to finish handshaking.
  */
-export async function waitForTunnelUrl(maxWaitMs = 5000): Promise<string | null> {
+export async function waitForTunnelUrl(maxWaitMs = 6000): Promise<string | null> {
   const existing = getTunnelUrl();
   if (existing) return existing;
 

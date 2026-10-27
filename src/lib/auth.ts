@@ -3,6 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { prisma } from './prisma';
 import bcrypt from 'bcryptjs';
 import { authConfig } from '@/auth.config';
+import { ensureDatabaseSchema } from './db-init';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -16,6 +17,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!credentials?.email || !credentials?.password) return null;
         const email = (credentials.email as string).trim().toLowerCase();
         const password = credentials.password as string;
+
+        try {
+          await ensureDatabaseSchema(prisma);
+        } catch {}
 
         // When logging into the demo account, ensure it exists with default credentials
         if (email === 'prof@university.edu' && password === 'professor123') {

@@ -17,16 +17,9 @@ async function main() {
     },
   });
 
-  // Clean out any existing courses so the demo account acts like a brand new account
-  const deleted = await prisma.course.deleteMany({
-    where: { professorId: professor.id },
-  });
-
-  console.log('✅ Demo account ready as a fresh, clean account:');
+  console.log('✅ Demo account ready:');
   console.log('  - Email: prof@university.edu');
   console.log('  - Password: professor123');
-  console.log('  - Courses: 0 (acts like a brand new account)');
-  console.log(`  - Cleaned up ${deleted.count} old courses/sessions`);
 }
 
 main()

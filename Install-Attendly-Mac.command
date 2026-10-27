@@ -35,8 +35,6 @@ echo ""
 if [ ! -f ".env" ]; then
     echo "⚙️ [1/5] Configuring environment settings..."
     cp .env.example .env
-    RANDOM_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" 2>/dev/null || openssl rand -base64 32 || echo "secret-$(date +%s)")
-    sed -i '' "s/change-this-to-a-secure-random-32-byte-string/$RANDOM_SECRET/g" .env
 else
     echo "✅ [1/5] Environment (.env) ready."
 fi

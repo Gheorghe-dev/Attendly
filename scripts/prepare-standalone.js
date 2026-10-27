@@ -45,62 +45,71 @@ if (fs.existsSync(binSrc)) {
   copyRecursiveSync(binSrc, binDest);
 }
 
-// 3. Generate a clean database template for first launch.
+// 3. Database template for first launch.
 const prismaSrc = path.join(ROOT_DIR, 'prisma');
 const prismaDest = path.join(STANDALONE_DIR, 'prisma');
-const templateName = `attendly-build-template-${process.pid}-${crypto.randomUUID()}.db`;
-const templateDb = path.join(prismaSrc, templateName);
-const prismaCli = path.join(ROOT_DIR, 'node_modules', 'prisma', 'build', 'index.js');
+const existingTemplate = path.join(prismaSrc, 'template.db');
 
-if (!fs.existsSync(prismaCli)) {
-  console.error('[prepare-standalone] Error: Prisma CLI is missing. Run "npm ci" first.');
-  process.exit(1);
-}
+fs.rmSync(prismaDest, { recursive: true, force: true });
+fs.mkdirSync(prismaDest, { recursive: true });
 
-try {
-  execFileSync(process.execPath, [
-    prismaCli,
-    'db',
-    'push',
-    '--schema',
-    path.join(prismaSrc, 'schema.prisma'),
-  ], {
-    cwd: ROOT_DIR,
-    env: {
-      ...process.env,
-      DATABASE_URL: `file:./${templateName}`,
-    },
-    stdio: 'inherit',
-  });
+if (fs.existsSync(existingTemplate)) {
+  fs.copyFileSync(existingTemplate, path.join(prismaDest, 'template.db'));
+  console.log('[prepare-standalone] Copied existing template.db to standalone bundle.');
+} else {
+  const templateName = `attendly-build-template-${process.pid}-${crypto.randomUUID()}.db`;
+  const templateDb = path.join(prismaSrc, templateName);
+  const prismaCli = path.join(ROOT_DIR, 'node_modules', 'prisma', 'build', 'index.js');
 
-  // Pre-seed template database with default demo professor so fresh installer runs work immediately
-  const tsxCli = path.join(ROOT_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-  if (fs.existsSync(tsxCli)) {
-    try {
-      execFileSync(process.execPath, [tsxCli, path.join(ROOT_DIR, 'prisma', 'seed.ts')], {
-        cwd: ROOT_DIR,
-        env: {
-          ...process.env,
-          DATABASE_URL: `file:./${templateName}`,
-        },
-        stdio: 'inherit',
-      });
-      console.log('[prepare-standalone] Seeded template database with demo professor account.');
-    } catch (seedErr) {
-      console.warn('[prepare-standalone] Could not seed template database:', seedErr.message);
-    }
+  if (!fs.existsSync(prismaCli)) {
+    console.error('[prepare-standalone] Error: Prisma CLI is missing. Run "npm ci" first.');
+    process.exit(1);
   }
 
-  fs.rmSync(prismaDest, { recursive: true, force: true });
-  fs.mkdirSync(prismaDest, { recursive: true });
-  fs.copyFileSync(templateDb, path.join(prismaDest, 'template.db'));
-} catch (error) {
-  console.error('[prepare-standalone] Error: Could not generate a clean database template.', error.message);
-  process.exitCode = 1;
-} finally {
-  for (const suffix of ['', '-journal', '-wal', '-shm']) {
-    const tempFile = `${templateDb}${suffix}`;
-    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+  try {
+    execFileSync(process.execPath, [
+      prismaCli,
+      'db',
+      'push',
+      '--schema',
+      path.join(prismaSrc, 'schema.prisma'),
+    ], {
+      cwd: ROOT_DIR,
+      env: {
+        ...process.env,
+        DATABASE_URL: `file:./${templateName}`,
+      },
+      stdio: 'inherit',
+    });
+
+    // Pre-seed template database with default demo professor so fresh installer runs work immediately
+    const tsxCli = path.join(ROOT_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    if (fs.existsSync(tsxCli)) {
+      try {
+        execFileSync(process.execPath, [tsxCli, path.join(ROOT_DIR, 'prisma', 'seed.ts')], {
+          cwd: ROOT_DIR,
+          env: {
+            ...process.env,
+            DATABASE_URL: `file:./${templateName}`,
+          },
+          stdio: 'inherit',
+        });
+        console.log('[prepare-standalone] Seeded template database with demo professor account.');
+      } catch (seedErr) {
+        console.warn('[prepare-standalone] Could not seed template database:', seedErr.message);
+      }
+    }
+
+    fs.copyFileSync(templateDb, path.join(prismaDest, 'template.db'));
+    fs.copyFileSync(templateDb, existingTemplate);
+  } catch (error) {
+    console.error('[prepare-standalone] Error: Could not generate a clean database template.', error.message);
+    process.exitCode = 1;
+  } finally {
+    for (const suffix of ['', '-journal', '-wal', '-shm']) {
+      const tempFile = `${templateDb}${suffix}`;
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+    }
   }
 }
 

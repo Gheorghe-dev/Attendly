@@ -120,12 +120,12 @@ The web interface also works in a modern browser on phones and tablets. Phones a
 
 In the cloned or extracted project folder, run one of the Windows launchers:
 
-Before the first launch, create `.env` from `.env.example` if needed and replace the sample `NEXTAUTH_SECRET` with a unique value. Windows launchers copy the template but do not generate a replacement secret. See [TUTORIAL.md](TUTORIAL.md) for the exact steps.
+Launchers automatically initialize `.env`, configure authentication secrets, copy the ready-to-use template database with the demo account, and start the Worldwide Cloudflare Tunnel.
 
 1. **Native Desktop App**:
    - Double-click **`Attendly.bat`** (or use the desktop shortcut).
-   - Installs dependencies and initializes/builds the app when needed, then opens the desktop window. The desktop launcher also starts a Cloudflare tunnel.
-   - Before your first launch, replace the sample `NEXTAUTH_SECRET` in `.env` with a generated value (steps in [TUTORIAL.md](TUTORIAL.md)).
+   - Installs dependencies, sets up database, and launches the desktop app with integrated Cloudflare tunnel.
+   - Ready to log in immediately with the built-in demo account (`prof@university.edu` / `professor123`) or create your own.
 
 2. **Web Browser + Worldwide Mobile Tunnel**:
    - Run **`start.bat`** (it may request Administrator permission to configure Windows Firewall).

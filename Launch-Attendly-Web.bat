@@ -3,6 +3,8 @@ setlocal
 cd /d "%~dp0"
 title Attendly Web
 
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue" >nul 2>&1
+
 if not exist ".env" (
     copy ".env.example" ".env" >nul
 )
@@ -12,7 +14,11 @@ if not exist "node_modules\" (
 )
 
 if not exist "prisma\dev.db" (
-    call npx prisma db push
+    if exist "prisma\template.db" (
+        copy "prisma\template.db" "prisma\dev.db" >nul
+    ) else (
+        call npx prisma db push
+    )
 )
 
 REM Ensure production build exists

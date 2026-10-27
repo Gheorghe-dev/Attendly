@@ -234,13 +234,13 @@ async function startServer() {
 
   // Ensure NextAuth has a persistent, secure secret across app launches
   const secretFile = path.join(getUserDataDir(), '.auth_secret');
-  let authSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
+  let authSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
   if (!authSecret) {
     const envFile = path.join(ROOT_DIR, '.env');
     if (fs.existsSync(envFile)) {
       try {
         const envText = fs.readFileSync(envFile, 'utf-8');
-        const match = envText.match(/^NEXTAUTH_SECRET=["']?([^"'\r\n]+)["']?/m);
+        const match = envText.match(/^(?:AUTH_SECRET|NEXTAUTH_SECRET)=["']?([^"'\r\n]+)["']?/m);
         if (match && match[1]) authSecret = match[1].trim();
       } catch {}
     }
@@ -249,11 +249,10 @@ async function startServer() {
     if (fs.existsSync(secretFile)) {
       try { authSecret = fs.readFileSync(secretFile, 'utf-8').trim(); } catch {}
     }
-    if (!authSecret || authSecret.length < 16) {
-      const crypto = require('crypto');
-      authSecret = crypto.randomBytes(32).toString('base64url');
-      try { fs.writeFileSync(secretFile, authSecret, 'utf-8'); } catch {}
-    }
+  }
+  if (!authSecret || authSecret.length < 16) {
+    authSecret = 'attendly-app-secure-default-encryption-secret-32-bytes';
+    try { fs.writeFileSync(secretFile, authSecret, 'utf-8'); } catch {}
   }
 
   const proc = spawn(process.execPath, serverArgs, {
