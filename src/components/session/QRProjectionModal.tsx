@@ -256,7 +256,7 @@ export function QRProjectionModal({
               >
                 {publicUrl.includes('trycloudflare.com')
                   ? '🌍 Accessible from ANY Wi-Fi network & 4G/5G mobile data'
-                  : '⏳ Connecting worldwide access (accessible on local Wi-Fi)...'}
+                  : '⏳ Connecting Any Wi-Fi access tunnel...'}
               </span>
             </div>
           </div>

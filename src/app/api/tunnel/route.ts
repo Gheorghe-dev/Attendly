@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTunnelUrl, getLocalIpAddress, setMemoryTunnelUrl } from '@/lib/qrcode';
+import { getTunnelUrl, setMemoryTunnelUrl, ensureCloudflareTunnel, waitForTunnelUrl } from '@/lib/qrcode';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const tunnel = getTunnelUrl();
-  const lanIp = getLocalIpAddress();
-  const port = process.env.PORT || '3000';
-  const lanUrl = lanIp ? `http://${lanIp}:${port}` : null;
-  const localUrl = `http://localhost:${port}`;
-  const bestUrl = tunnel || lanUrl || localUrl;
+  let tunnel = getTunnelUrl();
+
+  // If tunnel is not active yet, proactively start it and wait briefly
+  if (!tunnel && process.env.NODE_ENV !== 'test') {
+    ensureCloudflareTunnel();
+    tunnel = await waitForTunnelUrl(2500);
+  }
+
+  const isWorldwide = Boolean(tunnel && tunnel.includes('trycloudflare.com'));
 
   return NextResponse.json({
-    tunnelUrl: tunnel,
-    lanUrl,
-    localUrl,
-    bestUrl,
-    isWorldwide: Boolean(tunnel),
-    mode: tunnel ? 'worldwide' : lanUrl ? 'lan' : 'local',
+    tunnelUrl: tunnel || null,
+    bestUrl: tunnel || null,
+    isWorldwide,
+    connecting: !isWorldwide,
+    mode: isWorldwide ? 'worldwide' : 'connecting',
   });
 }
 
