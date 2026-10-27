@@ -114,6 +114,14 @@ async function startCloudflareTunnel(serverProc) {
   console.log('  Connecting secure Cloudflare Worldwide Tunnel...');
   console.log('  (Works on ALL phones, cellular 4G/5G, and any Wi-Fi network)\n');
 
+  try {
+    if (process.platform === 'win32') {
+      execSync('taskkill /F /IM cloudflared.exe >nul 2>&1', { stdio: 'ignore' });
+    } else {
+      execSync('killall cloudflared >/dev/null 2>&1 || true', { stdio: 'ignore' });
+    }
+  } catch {}
+
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
   const localBin = path.join(__dirname, '..', 'bin', binName);
 
@@ -122,11 +130,11 @@ async function startCloudflareTunnel(serverProc) {
     if (process.platform !== 'win32') {
       try { fs.chmodSync(localBin, 0o755); } catch {}
     }
-    tunnel = spawn(localBin, ['tunnel', '--url', 'http://localhost:3000'], {
+    tunnel = spawn(localBin, ['tunnel', '--url', 'http://127.0.0.1:3000', '--no-autoupdate', '--protocol', 'http2'], {
       shell: false,
     });
   } else {
-    tunnel = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', 'http://localhost:3000'], {
+    tunnel = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', 'http://127.0.0.1:3000', '--no-autoupdate', '--protocol', 'http2'], {
       shell: true,
     });
   }

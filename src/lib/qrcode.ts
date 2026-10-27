@@ -131,6 +131,8 @@ export function ensureCloudflareTunnel(): void {
   const binCandidates = [
     path.join(process.cwd(), 'bin', binName),
     path.join(process.cwd(), '..', 'bin', binName),
+    path.join(process.cwd(), '..', '..', 'bin', binName),
+    path.join(process.cwd(), '..', '..', '..', 'bin', binName),
   ];
   if (process.platform === 'win32') {
     binCandidates.push(path.join(process.env.APPDATA || '', 'Attendly', 'bin', binName));
@@ -159,13 +161,13 @@ export function ensureCloudflareTunnel(): void {
   try {
     let proc: import('child_process').ChildProcess | null = null;
     if (localBin) {
-      proc = cpMod.spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate'], {
+      proc = cpMod.spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--protocol', 'http2'], {
         windowsHide: true,
         shell: false,
       });
     } else {
       const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-      proc = cpMod.spawn(npxCmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate'], {
+      proc = cpMod.spawn(npxCmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--protocol', 'http2'], {
         windowsHide: true,
         shell: true,
       });
@@ -210,7 +212,7 @@ export function ensureCloudflareTunnel(): void {
 /**
  * Asynchronously wait up to maxWaitMs for the Cloudflare tunnel URL to finish handshaking.
  */
-export async function waitForTunnelUrl(maxWaitMs = 3000): Promise<string | null> {
+export async function waitForTunnelUrl(maxWaitMs = 5000): Promise<string | null> {
   const existing = getTunnelUrl();
   if (existing) return existing;
 

@@ -1,15 +1,17 @@
 @echo off
-title QR Attendance - Public Tunnel
+setlocal
+cd /d "%~dp0"
+title Attendly - Cloudflare Worldwide Tunnel
 echo ========================================================
-echo   QR Attendance System - Public Tunnel
+echo   Attendly - Secure Cloudflare Worldwide Tunnel
 echo ========================================================
 echo.
-echo   This creates a free, secure public HTTPS link for your
-echo   attendance system so students on ANY network (4G/5G,
-echo   university Wi-Fi, or home Wi-Fi) can immediately scan
-echo   and access the app!
+echo   Creates a secure public HTTPS link for attendance so
+echo   students on ANY network (4G/5G, university Wi-Fi,
+echo   or home Wi-Fi) can instantly scan and check in!
 echo.
-echo   Connecting tunnel...
+echo   Connecting Cloudflare Worldwide Tunnel...
 echo.
-npx --yes localtunnel --port 3000
+
+node scripts\start-internet.js
 pause

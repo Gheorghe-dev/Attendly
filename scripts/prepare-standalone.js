@@ -38,6 +38,13 @@ const staticSrc = path.join(ROOT_DIR, '.next', 'static');
 const staticDest = path.join(STANDALONE_DIR, '.next', 'static');
 copyRecursiveSync(staticSrc, staticDest);
 
+// 3. Copy bin (cloudflared binary)
+const binSrc = path.join(ROOT_DIR, 'bin');
+const binDest = path.join(STANDALONE_DIR, 'bin');
+if (fs.existsSync(binSrc)) {
+  copyRecursiveSync(binSrc, binDest);
+}
+
 // 3. Generate a clean database template for first launch.
 const prismaSrc = path.join(ROOT_DIR, 'prisma');
 const prismaDest = path.join(STANDALONE_DIR, 'prisma');

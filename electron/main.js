@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
 
 // Set Application Name and Windows User Model ID early
 app.setName('Attendly');
@@ -305,12 +305,12 @@ function startCloudflareTunnel() {
     if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
   } catch {}
 
-  // Clean up any stale tunnel process before starting
+  // Clean up any stale tunnel process synchronously before starting new one
   try {
     if (process.platform === 'win32') {
-      exec('taskkill /F /IM cloudflared.exe >nul 2>&1', { windowsHide: true });
+      execSync('taskkill /F /IM cloudflared.exe >nul 2>&1', { windowsHide: true, stdio: 'ignore' });
     } else {
-      exec('killall cloudflared >/dev/null 2>&1 || true');
+      execSync('killall cloudflared >/dev/null 2>&1 || true', { stdio: 'ignore' });
     }
   } catch {}
 
@@ -336,7 +336,7 @@ function startCloudflareTunnel() {
         try { fs.chmodSync(localBin, 0o755); } catch {}
       }
       console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
-      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'], {
+      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {
         cwd: getUserDataDir(),
         shell: false,
         windowsHide: true,
@@ -344,7 +344,7 @@ function startCloudflareTunnel() {
     } else if (!app.isPackaged) {
       // In development only, allow falling back to npx
       const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'], {
+      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {
         cwd: getUserDataDir(),
         shell: true,
         windowsHide: true,

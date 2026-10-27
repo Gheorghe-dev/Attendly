@@ -32,7 +32,7 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
-    "tunnel": "npx --yes localtunnel --port 3000",
+    "tunnel": "node scripts/start-internet.js",
     "desktop": "electron .",
     "desktop:start": "npm run desktop:package && electron .",
     "desktop:package": "npm run build && node scripts/prepare-standalone.js",
