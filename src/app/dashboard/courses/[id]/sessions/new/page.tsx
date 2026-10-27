@@ -40,6 +40,20 @@ export default function CreateSessionPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hostCoords, setHostCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Automatically acquire host device location for accurate student proximity calculation
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setHostCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+  }, []);
 
   // Default date to now
   useEffect(() => {
@@ -80,6 +94,8 @@ export default function CreateSessionPage() {
           date,
           groups: selectedGroups,
           status: 'open',
+          hostLat: hostCoords?.lat ?? null,
+          hostLng: hostCoords?.lng ?? null,
         }),
       });
 

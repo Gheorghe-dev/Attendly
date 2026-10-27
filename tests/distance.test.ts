@@ -1,5 +1,7 @@
 import {
   calculateDistance,
+  haversineDistance,
+  vincentyDistance,
   formatDistance,
   formatDistanceWithCity,
   getDistanceCategory,
@@ -15,6 +17,18 @@ describe('Distance calculation & formatting', () => {
 
     // Identical coords should be 0
     expect(calculateDistance(44.3168, 23.8225, 44.3168, 23.8225)).toBe(0);
+  });
+
+  it('calculates exact geodetic distance between host and scanning device using Vincenty algorithm', () => {
+    // Exact distance on WGS-84 ellipsoid
+    const vincenty = vincentyDistance(44.3168, 23.8225, 44.4323, 26.1063);
+    expect(vincenty).not.toBeNull();
+    expect(vincenty).toBe(182465); // exactly 182,465 meters
+
+    // In-room proximity test (~10 meters apart)
+    const inRoomDist = calculateDistance(44.3168, 23.8225, 44.31689, 23.8225);
+    expect(inRoomDist).toBe(10);
+    expect(getDistanceCategory(inRoomDist).category).toBe('room');
   });
 
   it('formats distance in meters and kilometers properly', () => {

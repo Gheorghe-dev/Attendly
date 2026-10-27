@@ -68,6 +68,22 @@ export default function StudentAttendPage() {
   // Success state
   const [successData, setSuccessData] = useState<SuccessData | null>(null);
 
+  // Pre-warmed GPS coordinates from the scanning device
+  const [deviceCoords, setDeviceCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Pre-warm device location as soon as student opens the scan link
+  useEffect(() => {
+    if (typeof window !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setDeviceCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+      );
+    }
+  }, []);
+
   // Load session metadata
   useEffect(() => {
     fetch(`/api/attend/${token}`)
@@ -90,11 +106,11 @@ export default function StudentAttendPage() {
     setApiError(null);
     setStep(2);
 
-    // Acquire device location quietly (1.5s timeout) to report scan distance without blocking
-    let coords: { lat: number; lng: number } | null = null;
-    if (typeof window !== 'undefined' && navigator.geolocation) {
+    // Acquire device location to compute exact distance from host machine
+    let coords: { lat: number; lng: number } | null = deviceCoords;
+    if (!coords && typeof window !== 'undefined' && navigator.geolocation) {
       coords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 1500);
+        const timer = setTimeout(() => resolve(null), 1800);
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             clearTimeout(timer);
@@ -104,7 +120,7 @@ export default function StudentAttendPage() {
             clearTimeout(timer);
             resolve(null);
           },
-          { enableHighAccuracy: true, timeout: 1500, maximumAge: 60000 }
+          { enableHighAccuracy: true, timeout: 1800, maximumAge: 60000 }
         );
       });
     }

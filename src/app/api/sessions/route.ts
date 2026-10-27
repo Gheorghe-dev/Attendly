@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { detectIpCoordinates } from '@/lib/networkGeo';
+import { resolveHostCoordinates } from '@/lib/networkGeo';
 import { slugifyClassroom, formatClassroomName, DEFAULT_CLASSROOM } from '@/lib/classroom';
 
 export async function GET(req: NextRequest) {
@@ -34,19 +34,16 @@ export async function POST(req: NextRequest) {
   const course = await prisma.course.findFirst({ where: { id: courseId, professorId: session.user.id } });
   if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
 
-  const forwarded = req.headers.get('x-forwarded-for');
-  const ip = forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1';
-
   let hostLat: number | null = typeof body.hostLat === 'number' ? body.hostLat : null;
   let hostLng: number | null = typeof body.hostLng === 'number' ? body.hostLng : null;
   let hostCity: string | null = typeof body.hostCity === 'string' ? body.hostCity.trim() : null;
 
   if (hostLat == null || hostLng == null) {
-    const geo = await detectIpCoordinates(ip);
+    const geo = await resolveHostCoordinates();
     if (geo) {
       hostLat = geo.lat;
       hostLng = geo.lng;
-      hostCity = geo.city || null;
+      hostCity = hostCity || geo.city || null;
     }
   }
 

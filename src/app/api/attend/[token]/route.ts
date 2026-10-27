@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { parseGroups } from '@/lib/groups';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { calculateDistance } from '@/lib/distance';
-import { detectIpCoordinates } from '@/lib/networkGeo';
+import { detectIpCoordinates, resolveHostCoordinates } from '@/lib/networkGeo';
 import { slugifyClassroom, formatClassroomName } from '@/lib/classroom';
 
 function normalizeEmail(email: string): string {
@@ -12,9 +12,12 @@ function normalizeEmail(email: string): string {
 
 export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
   try {
-    // 1. Rate limiting by IP
+    // 1. Rate limiting by IP (supports Cloudflare connecting IP)
     const forwarded = req.headers.get('x-forwarded-for');
-    const ip = forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1';
+    const clientIp =
+      req.headers.get('cf-connecting-ip') ||
+      (forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1');
+    const ip = clientIp;
     const rate = checkRateLimit(ip, 30, 60000);
     if (!rate.allowed) {
       return NextResponse.json(
@@ -197,7 +200,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       }
     }
 
-    // 7. Distance calculation from session host
+    // 7. Distance calculation between the host device and the scanning device
     const rawLat = body?.coords?.lat ?? body?.coords?.latitude;
     const rawLng = body?.coords?.lng ?? body?.coords?.longitude ?? body?.coords?.lon;
     let studentLat: number | null =
@@ -207,8 +210,20 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     let studentCity: string | null =
       typeof body?.city === 'string' ? body.city.trim() : null;
 
+    // Fallback A: Cloudflare Edge Geolocation Headers (if scanned through Cloudflare Tunnel)
     if (studentLat == null || studentLng == null) {
-      const netGeo = await detectIpCoordinates(ip);
+      const cfLat = parseFloat(req.headers.get('cf-iplatitude') || '');
+      const cfLng = parseFloat(req.headers.get('cf-iplongitude') || '');
+      if (!Number.isNaN(cfLat) && !Number.isNaN(cfLng)) {
+        studentLat = cfLat;
+        studentLng = cfLng;
+        studentCity = studentCity || req.headers.get('cf-ipcity') || null;
+      }
+    }
+
+    // Fallback B: IP Geolocation lookup of student's public IP
+    if (studentLat == null || studentLng == null) {
+      const netGeo = await detectIpCoordinates(clientIp);
       if (netGeo) {
         studentLat = netGeo.lat;
         studentLng = netGeo.lng;
@@ -216,14 +231,37 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       }
     }
 
+    // Ensure Host Device coordinates are established
+    let hostLat = session.hostLat;
+    let hostLng = session.hostLng;
+    if (hostLat == null || hostLng == null) {
+      const hostGeo = await resolveHostCoordinates();
+      if (hostGeo) {
+        hostLat = hostGeo.lat;
+        hostLng = hostGeo.lng;
+        // Persist to session so future scans have it cached immediately
+        await prisma.session
+          .update({
+            where: { id: session.id },
+            data: {
+              hostLat: hostGeo.lat,
+              hostLng: hostGeo.lng,
+              hostCity: session.hostCity || hostGeo.city,
+            },
+          })
+          .catch(() => {});
+      }
+    }
+
+    // Calculate geodetic distance between the host device and scanning device
     let distanceMeters: number | null = null;
     if (
-      session.hostLat != null &&
-      session.hostLng != null &&
+      hostLat != null &&
+      hostLng != null &&
       studentLat != null &&
       studentLng != null
     ) {
-      distanceMeters = calculateDistance(session.hostLat, session.hostLng, studentLat, studentLng);
+      distanceMeters = calculateDistance(hostLat, hostLng, studentLat, studentLng);
     }
 
     // 8. Check existing attendance record for the same student

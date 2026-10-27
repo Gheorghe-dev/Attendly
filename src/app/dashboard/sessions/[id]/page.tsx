@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   MapPin,
+  Navigation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistance, getDistanceCategory } from '@/lib/distance';
@@ -513,6 +514,15 @@ export default function LiveSessionMonitorPage() {
               <ShieldCheck className="w-3 h-3" />
               <span>1 Device / Student</span>
             </span>
+            {session.hostLat != null && session.hostLng != null && (
+              <span
+                className="inline-flex items-center gap-1 text-xs font-mono text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2.5 py-0.5 rounded-full border border-sky-500/20"
+                title="Host device location calibrated: student scan proximity measured with WGS-84 precision"
+              >
+                <Navigation className="w-3 h-3" />
+                <span>Host Proximity Calibrated</span>
+              </span>
+            )}
           </div>
 
           <h1 className="font-serif text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
