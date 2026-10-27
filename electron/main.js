@@ -333,6 +333,10 @@ function startCloudflareTunnel() {
     if (localBin) {
       if (process.platform !== 'win32') {
         try { fs.chmodSync(localBin, 0o755); } catch {}
+      } else {
+        try {
+          execSync(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${localBin}' -ErrorAction SilentlyContinue"`, { windowsHide: true, stdio: 'ignore' });
+        } catch {}
       }
       console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
       proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {

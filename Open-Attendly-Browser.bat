@@ -3,6 +3,8 @@ setlocal
 cd /d "%~dp0"
 title Attendly Web Browser
 
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue"
+
 where node >nul 2>&1
 if %errorLevel% neq 0 (
     echo [ERROR] Node.js is required. Download from https://nodejs.org/
@@ -20,8 +22,13 @@ if not exist "node_modules\" (
 )
 
 if not exist "prisma\dev.db" (
-    echo [Attendly] Initializing database...
-    call npx prisma db push
+    if exist "prisma\template.db" (
+        echo [Attendly] Initializing database from ready-to-use template...
+        copy "prisma\template.db" "prisma\dev.db" >nul
+    ) else (
+        echo [Attendly] Initializing database...
+        call npx prisma db push
+    )
 )
 
 REM Check if server is already running on port 3000

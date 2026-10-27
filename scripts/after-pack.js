@@ -114,7 +114,8 @@ exports.default = async function (context) {
   const envContent = [
     '# Attendly – auto-generated .env for packaged build',
     'DATABASE_URL="file:./prisma/dev.db"',
-    `NEXTAUTH_SECRET="${require('crypto').randomBytes(32).toString('base64url')}"`,
+    'AUTH_SECRET="attendly-app-secure-default-encryption-secret-32-bytes"',
+    'NEXTAUTH_SECRET="attendly-app-secure-default-encryption-secret-32-bytes"',
     'AUTH_TRUST_HOST="true"',
     'DEV_MODE_EMAIL="1"',
     '',
@@ -128,7 +129,43 @@ exports.default = async function (context) {
     console.warn('[after-pack] Warning: Could not write default .env:', err.message);
   }
 
-  // ── 4. Ensure executable permissions on helper binaries (macOS / Linux) ───
+  // ── 3b. Ensure database template is bundled in resources ──────────
+  const templateSrc = path.join(projectDir, 'prisma', 'template.db');
+  if (fs.existsSync(templateSrc)) {
+    const destPaths = [
+      path.join(resourcesDir, 'prisma', 'template.db'),
+      path.join(resourcesDir, 'standalone', 'prisma', 'template.db'),
+    ];
+    for (const d of destPaths) {
+      try {
+        fs.mkdirSync(path.dirname(d), { recursive: true });
+        fs.copyFileSync(templateSrc, d);
+        console.log('[after-pack] Bundled template.db into:', d);
+      } catch (err) {
+        console.warn('[after-pack] Warning: Could not copy template.db to', d, err.message);
+      }
+    }
+  }
+
+  // ── 4. Ensure helper binaries and permissions ─────────────────────
+  const binDir = path.join(resourcesDir, 'bin');
+  const binSrc = path.join(projectDir, 'bin');
+  if (fs.existsSync(binSrc)) {
+    try {
+      if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
+      for (const item of fs.readdirSync(binSrc)) {
+        const srcItem = path.join(binSrc, item);
+        const dstItem = path.join(binDir, item);
+        if (!fs.existsSync(dstItem)) {
+          fs.copyFileSync(srcItem, dstItem);
+          console.log('[after-pack] Copied binary to resources:', item);
+        }
+      }
+    } catch (e) {
+      console.warn('[after-pack] Could not copy bin resources:', e.message);
+    }
+  }
+
   if (platform !== 'windows') {
     const binCandidates = [
       path.join(resourcesDir, 'bin', 'cloudflared'),
@@ -143,6 +180,15 @@ exports.default = async function (context) {
           console.warn('[after-pack] Could not chmod:', binPath, e.message);
         }
       }
+    }
+  } else {
+    // On Windows, unblock bundled cloudflared executable from SmartScreen
+    const winBin = path.join(resourcesDir, 'bin', 'cloudflared.exe');
+    if (fs.existsSync(winBin)) {
+      try {
+        require('child_process').execSync(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${winBin}' -ErrorAction SilentlyContinue"`, { windowsHide: true, stdio: 'ignore' });
+        console.log('[after-pack] Unblocked cloudflared.exe for Windows');
+      } catch {}
     }
   }
 

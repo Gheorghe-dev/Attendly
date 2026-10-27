@@ -3,6 +3,8 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title Attendly — 1-Click Windows Installer
 
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue"
+
 echo ========================================================
 echo          ATTENDLY — 1-CLICK WINDOWS INSTALLER
 echo ========================================================

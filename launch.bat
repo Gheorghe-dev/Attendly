@@ -3,6 +3,8 @@ setlocal
 cd /d "%~dp0"
 title Attendly - Starting Application
 
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue"
+
 echo ========================================================
 echo       ATTENDLY — STARTING APPLICATION & SERVICES
 echo ========================================================
@@ -29,8 +31,13 @@ if not exist "node_modules\" (
 
 REM 3. Synchronize database if missing
 if not exist "prisma\dev.db" (
-    echo [3/4] Initializing local database...
-    call npx prisma db push
+    if exist "prisma\template.db" (
+        echo [3/4] Initializing database from ready-to-use template...
+        copy "prisma\template.db" "prisma\dev.db" >nul
+    ) else (
+        echo [3/4] Initializing local database...
+        call npx prisma db push
+    )
 )
 
 REM 4. Start server + Cloudflare worldwide mobile tunnel + open browser
