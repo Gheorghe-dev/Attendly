@@ -29,6 +29,7 @@ process.on('unhandledRejection', (reason, promise) => {
 const ROOT_DIR = path.resolve(__dirname, '..');
 let PORT = Number(process.env.PORT) || 3000;
 let SERVER_URL = `http://127.0.0.1:${PORT}`;
+let globalServerCwd = null;
 
 function getUserDataDir() {
   try {
@@ -229,6 +230,7 @@ async function startServer() {
   }
 
   console.log('[Electron] Launching server with script:', serverScript);
+  globalServerCwd = serverCwd;
 
   // Ensure NextAuth has a persistent, secure secret across app launches
   const secretFile = path.join(getUserDataDir(), '.auth_secret');
@@ -364,33 +366,55 @@ function startCloudflareTunnel() {
           tunnelUrl = match[0];
           console.log('[Electron] Worldwide Tunnel active:', tunnelUrl);
 
-          // 1. Write to userData
-          try { fs.writeFileSync(TUNNEL_FILE, tunnelUrl, 'utf-8'); } catch {}
+          // 1. Write to userData and common discovery paths
+          const candidatePaths = [
+            TUNNEL_FILE,
+            path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
+            path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
+            path.join(ROOT_DIR, '.tunnel_url'),
+          ];
+          if (globalServerCwd) {
+            candidatePaths.push(path.join(globalServerCwd, '.tunnel_url'));
+          }
+          if (process.resourcesPath) {
+            candidatePaths.push(path.join(process.resourcesPath, 'standalone', '.tunnel_url'));
+            candidatePaths.push(path.join(process.resourcesPath, 'bin', '.tunnel_url'));
+          }
 
-          // 2. Also write to standalone cwd and ROOT_DIR so any process finds it
-          try {
-            if (serverCwd) fs.writeFileSync(path.join(serverCwd, '.tunnel_url'), tunnelUrl, 'utf-8');
-            fs.writeFileSync(path.join(ROOT_DIR, '.tunnel_url'), tunnelUrl, 'utf-8');
-          } catch {}
+          for (const targetPath of candidatePaths) {
+            try {
+              fs.writeFileSync(targetPath, tunnelUrl, 'utf-8');
+            } catch {}
+          }
 
-          // 3. Notify Next.js server via HTTP POST so in-memory cache is instant
-          try {
-            const postData = JSON.stringify({ url: tunnelUrl });
-            const req = http.request(
-              `http://127.0.0.1:${PORT}/api/tunnel`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Content-Length': Buffer.byteLength(postData),
+          // 2. Notify Next.js server via HTTP POST with automatic retry
+          const notifyNextServer = (retries = 6) => {
+            try {
+              const postData = JSON.stringify({ url: tunnelUrl });
+              const req = http.request(
+                `http://127.0.0.1:${PORT}/api/tunnel`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                  },
+                  timeout: 2000,
                 },
-              },
-              () => {}
-            );
-            req.on('error', () => {});
-            req.write(postData);
-            req.end();
-          } catch {}
+                (res) => {
+                  if (res.statusCode !== 200 && retries > 0) {
+                    setTimeout(() => notifyNextServer(retries - 1), 1000);
+                  }
+                }
+              );
+              req.on('error', () => {
+                if (retries > 0) setTimeout(() => notifyNextServer(retries - 1), 1000);
+              });
+              req.write(postData);
+              req.end();
+            } catch {}
+          };
+          notifyNextServer();
 
           updateTrayMenu();
           if (mainWindow && !mainWindow.isDestroyed()) {

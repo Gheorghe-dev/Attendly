@@ -137,22 +137,36 @@ export default function LiveSessionMonitorPage() {
     loadInitialData();
   }, [loadInitialData]);
 
-  // Automatically refresh QR code if it initially loaded with localhost, so students on any Wi-Fi can scan
+  // Continuously refresh QR code until Cloudflare worldwide tunnel URL is available for any Wi-Fi
   useEffect(() => {
-    if (qrData?.url && (qrData.url.includes('localhost') || qrData.url.includes('127.0.0.1'))) {
-      const timer = setTimeout(async () => {
-        try {
-          const qrRes = await fetch(`/api/sessions/${id}/qr`);
-          if (qrRes.ok) {
-            const qData = await qrRes.json();
-            if (qData?.url && !qData.url.includes('localhost') && !qData.url.includes('127.0.0.1')) {
-              setQrData(qData);
+    const isWorldwide = qrData?.url?.includes('trycloudflare.com');
+    if (isWorldwide) return;
+
+    let attempts = 0;
+    const maxAttempts = 20; // 30 seconds max polling
+
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(interval);
+        return;
+      }
+
+      try {
+        const qrRes = await fetch(`/api/sessions/${id}/qr`);
+        if (qrRes.ok) {
+          const qData = await qrRes.json();
+          if (qData?.url) {
+            setQrData(qData);
+            if (qData.url.includes('trycloudflare.com')) {
+              clearInterval(interval);
             }
           }
-        } catch {}
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
+        }
+      } catch {}
+    }, 1500);
+
+    return () => clearInterval(interval);
   }, [id, qrData?.url]);
 
   // Silently refine host location from professor's browser if available

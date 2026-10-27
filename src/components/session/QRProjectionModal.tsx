@@ -34,6 +34,7 @@ export function QRProjectionModal({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [copied, setCopied] = useState(false);
   const hideControlsTimerRef = useRef<NodeJS.Timeout>();
 
   // Fullscreen toggle
@@ -221,15 +222,41 @@ export function QRProjectionModal({
               <span>Direct access link:</span>
               {classroom && <span className="text-[#C9A56B]">Room {classroom}</span>}
             </div>
-            <p className="font-mono text-xs text-[#EDE9E0] font-semibold truncate bg-white/5 p-2 rounded-input border border-white/10">
-              {publicUrl}
-            </p>
-            <div className="mt-1 text-[10px] font-mono text-emerald-400/90 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>
+            <button
+              type="button"
+              onClick={() => {
+                if (publicUrl) {
+                  navigator.clipboard.writeText(publicUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
+              }}
+              title="Click to copy link"
+              className="w-full text-left font-mono text-xs text-[#EDE9E0] font-semibold truncate bg-white/5 hover:bg-white/10 p-2.5 rounded-input border border-white/10 transition-colors flex items-center justify-between group cursor-pointer"
+            >
+              <span className="truncate">{publicUrl}</span>
+              <span className="text-[10px] text-[#C9A56B] ml-2 shrink-0 group-hover:underline">
+                {copied ? '✓ Copied' : 'Copy'}
+              </span>
+            </button>
+            <div className="mt-1.5 text-[10px] font-mono flex items-center gap-1.5">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  publicUrl.includes('trycloudflare.com')
+                    ? 'bg-emerald-400 animate-pulse'
+                    : 'bg-amber-400'
+                }`}
+              />
+              <span
+                className={
+                  publicUrl.includes('trycloudflare.com')
+                    ? 'text-emerald-400/90 font-medium'
+                    : 'text-amber-400/90'
+                }
+              >
                 {publicUrl.includes('trycloudflare.com')
-                  ? 'Accessible from ANY Wi-Fi network or 4G/5G mobile data'
-                  : 'Accessible on local Wi-Fi network'}
+                  ? '🌍 Accessible from ANY Wi-Fi network & 4G/5G mobile data'
+                  : '⏳ Connecting worldwide access (accessible on local Wi-Fi)...'}
               </span>
             </div>
           </div>

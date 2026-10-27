@@ -78,6 +78,7 @@ jobs:
 
       - name: Build Electron installer (${{ matrix.platform }})
         run: |
+          mkdir -p bin
           if [ "${{ matrix.platform }}" = "mac" ]; then
             for arch in x64 arm64; do
               if [ "$arch" = "x64" ]; then
