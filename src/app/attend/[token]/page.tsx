@@ -26,6 +26,7 @@ interface SessionMeta {
   classroomSlug?: string;
   date: string;
   status: string;
+  localHostUrl?: string;
 }
 
 interface SuccessData {
@@ -85,6 +86,8 @@ export default function StudentAttendPage() {
   }, []);
 
   // Load session metadata
+  const [sameLocalNetwork, setSameLocalNetwork] = useState(false);
+
   useEffect(() => {
     fetch(`/api/attend/${token}`)
       .then((r) => r.json())
@@ -93,6 +96,15 @@ export default function StudentAttendPage() {
           setMetaError(data.error || 'Session does not exist.');
         } else {
           setMeta(data);
+          // In-room Wi-Fi probe: check if student device is on the same local Wi-Fi router as host
+          if (data.localHostUrl) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 700);
+            fetch(`${data.localHostUrl}/api/health`, { mode: 'no-cors', signal: ctrl.signal })
+              .then(() => setSameLocalNetwork(true))
+              .catch(() => {})
+              .finally(() => clearTimeout(timer));
+          }
         }
       })
       .catch(() => setMetaError('Server connection failed. Please check your network.'))
@@ -134,6 +146,7 @@ export default function StudentAttendPage() {
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           coords,
+          sameLocalNetwork,
           deviceId: devicePayload.deviceId,
           deviceFingerprint: devicePayload.deviceFingerprint,
         }),

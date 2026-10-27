@@ -228,22 +228,39 @@ export async function waitForTunnelUrl(maxWaitMs = 3000): Promise<string | null>
 
 export function getLocalIpAddress(): string | null {
   const interfaces = os.networkInterfaces();
-  const candidates: string[] = [];
+  const wifiCandidates: string[] = [];
+  const physicalCandidates: string[] = [];
+  const virtualCandidates: string[] = [];
 
   for (const name of Object.keys(interfaces)) {
     const isVirtual = /virtual|vbox|vmnet|pseudo|docker|wsl|loopback/i.test(name);
+    const isWifi = /wi-fi|wlan|wireless|airport/i.test(name);
+
     for (const iface of interfaces[name] || []) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        if (!isVirtual) {
-          candidates.unshift(iface.address);
+        if (iface.address.startsWith('192.168.56.')) {
+          virtualCandidates.push(iface.address);
+        } else if (isWifi) {
+          wifiCandidates.push(iface.address);
+        } else if (!isVirtual) {
+          physicalCandidates.push(iface.address);
         } else {
-          candidates.push(iface.address);
+          virtualCandidates.push(iface.address);
         }
       }
     }
   }
 
-  return candidates[0] || null;
+  return wifiCandidates[0] || physicalCandidates[0] || virtualCandidates[0] || null;
+}
+
+export function getLocalHostBaseUrl(): string {
+  const lanIp = getLocalIpAddress();
+  const port = process.env.PORT || '3000';
+  if (lanIp) {
+    return `http://${lanIp}:${port}`;
+  }
+  return `http://127.0.0.1:${port}`;
 }
 
 export function isLocalUrl(url?: string): boolean {

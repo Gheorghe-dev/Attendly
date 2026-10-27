@@ -10,6 +10,7 @@ import { ProgressRing } from '@/components/ui/ProgressRing';
 import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { QRProjectionModal } from '@/components/session/QRProjectionModal';
+import { CalibrateLocationModal } from '@/components/session/CalibrateLocationModal';
 import { formatDate, formatTime } from '@/lib/utils';
 import {
   Radio,
@@ -93,6 +94,7 @@ export default function LiveSessionMonitorPage() {
   const [sseConnected, setSseConnected] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [projectionOpen, setProjectionOpen] = useState(false);
+  const [calibrateModalOpen, setCalibrateModalOpen] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
 
   // Announcer text for screen readers (aria-live="polite")
@@ -111,6 +113,7 @@ export default function LiveSessionMonitorPage() {
   const [qrData, setQrData] = useState<{
     qr: string;
     url: string;
+    baseUrl?: string;
   } | null>(null);
 
   // Load session data
@@ -566,6 +569,17 @@ export default function LiveSessionMonitorPage() {
             <kbd className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
               C
             </kbd>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCalibrateModalOpen(true)}
+            className="flex items-center gap-1.5"
+            title="Calibrate exact classroom GPS anchor"
+          >
+            <Navigation className="w-3.5 h-3.5 text-accent" />
+            <span>{session.hostLat != null ? 'Calibrate GPS' : 'Set GPS Anchor'}</span>
           </Button>
 
           <Button
@@ -1063,6 +1077,20 @@ export default function LiveSessionMonitorPage() {
         presentCount={presentCount}
         enrolledCount={enrolledCount}
         isOpen={isOpen}
+      />
+
+      {/* ── Classroom GPS Calibration Modal ──────────────────────────── */}
+      <CalibrateLocationModal
+        open={calibrateModalOpen}
+        onClose={() => setCalibrateModalOpen(false)}
+        sessionId={id}
+        hostLat={session.hostLat}
+        hostLng={session.hostLng}
+        publicBaseUrl={qrData?.baseUrl}
+        onCalibrated={() => {
+          loadInitialData();
+          toast.success('Classroom GPS calibrated! Student proximity updated.');
+        }}
       />
     </div>
   );
