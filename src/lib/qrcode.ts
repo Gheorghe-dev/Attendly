@@ -120,7 +120,14 @@ export function stopCloudflareTunnel(): void {
 }
 
 export function ensureCloudflareTunnel(): void {
-  if (process.env.NODE_ENV === 'test') return;
+  if (
+    process.env.NODE_ENV === 'test' ||
+    process.env.CI ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.NEXT_PHASE?.includes('build')
+  ) {
+    return;
+  }
   if (memoryTunnelUrl || isStartingTunnel) return;
 
   const fsMod = getRuntimeFs();

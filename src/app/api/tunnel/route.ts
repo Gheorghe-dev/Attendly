@@ -6,8 +6,14 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   let tunnel = getTunnelUrl();
 
-  // If tunnel is not active yet, proactively start it and wait briefly
-  if (!tunnel && process.env.NODE_ENV !== 'test') {
+  // If tunnel is not active yet, proactively start it and wait briefly (runtime only, never during build/CI)
+  if (
+    !tunnel &&
+    process.env.NODE_ENV !== 'test' &&
+    !process.env.CI &&
+    !process.env.GITHUB_ACTIONS &&
+    !process.env.NEXT_PHASE?.includes('build')
+  ) {
     ensureCloudflareTunnel();
     tunnel = await waitForTunnelUrl(2500);
   }
