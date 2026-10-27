@@ -24,8 +24,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
     if (!s) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
 
-    // Brief check for tunnel handshaking (max 300ms) so request doesn't stall
-    await waitForTunnelUrl(300);
+    // Wait up to 3000ms for Cloudflare worldwide tunnel link so QR code encodes it immediately
+    await waitForTunnelUrl(3000);
 
     const hostHeader = req.headers.get('host') ?? '';
     const requestOrigin = hostHeader ? `${req.headers.get('x-forwarded-proto') ?? 'http'}://${hostHeader}` : '';

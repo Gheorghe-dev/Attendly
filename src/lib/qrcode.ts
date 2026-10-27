@@ -93,12 +93,130 @@ export function getTunnelUrl(): string | null {
   return null;
 }
 
+function getRuntimeChildProcess(): typeof import('child_process') | null {
+  try {
+    if (typeof __non_webpack_require__ !== 'undefined') {
+      return (__non_webpack_require__ as unknown as (id: string) => typeof import('child_process'))('child_process');
+    }
+    if (typeof window === 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const dynamicRequire = eval('require') as (id: string) => typeof import('child_process');
+      return dynamicRequire('child_process');
+    }
+  } catch {}
+  return null;
+}
+
+let activeTunnelProc: import('child_process').ChildProcess | null = null;
+let isStartingTunnel = false;
+
+export function stopCloudflareTunnel(): void {
+  if (activeTunnelProc) {
+    try {
+      activeTunnelProc.kill();
+    } catch {}
+    activeTunnelProc = null;
+  }
+}
+
+export function ensureCloudflareTunnel(): void {
+  if (process.env.NODE_ENV === 'test') return;
+  if (memoryTunnelUrl || isStartingTunnel) return;
+
+  const fsMod = getRuntimeFs();
+  const cpMod = getRuntimeChildProcess();
+  if (!cpMod) return;
+
+  const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
+  const binCandidates = [
+    path.join(process.cwd(), 'bin', binName),
+    path.join(process.cwd(), '..', 'bin', binName),
+  ];
+  if (process.platform === 'win32') {
+    binCandidates.push(path.join(process.env.APPDATA || '', 'Attendly', 'bin', binName));
+  }
+  const procAny = process as unknown as { resourcesPath?: string };
+  if (procAny.resourcesPath) {
+    binCandidates.unshift(path.join(procAny.resourcesPath, 'bin', binName));
+  }
+
+  let localBin: string | null = null;
+  if (fsMod) {
+    for (const b of binCandidates) {
+      try {
+        if (fsMod.existsSync(b)) {
+          localBin = b;
+          break;
+        }
+      } catch {}
+    }
+  }
+
+  isStartingTunnel = true;
+  const port = process.env.PORT || '3000';
+  console.log('[QR/Cloudflare] Activating Cloudflare worldwide tunnel for QR code scans...');
+
+  try {
+    let proc: import('child_process').ChildProcess | null = null;
+    if (localBin) {
+      proc = cpMod.spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate'], {
+        windowsHide: true,
+        shell: false,
+      });
+    } else {
+      const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+      proc = cpMod.spawn(npxCmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate'], {
+        windowsHide: true,
+        shell: true,
+      });
+    }
+
+    activeTunnelProc = proc;
+
+    let buffer = '';
+    const onData = (chunk: Buffer | string) => {
+      buffer += chunk.toString();
+      const match = buffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+      if (match && !memoryTunnelUrl) {
+        const url = match[0].trim();
+        memoryTunnelUrl = url;
+        isStartingTunnel = false;
+        console.log('[QR/Cloudflare] Worldwide Cloudflare Tunnel active for QR codes:', url);
+        if (fsMod) {
+          try {
+            fsMod.writeFileSync(path.join(process.cwd(), '.tunnel_url'), url, 'utf-8');
+          } catch {}
+        }
+      }
+    };
+
+    proc.stdout?.on('data', onData);
+    proc.stderr?.on('data', onData);
+    proc.on('close', () => {
+      isStartingTunnel = false;
+      activeTunnelProc = null;
+    });
+    proc.on('error', (err: Error) => {
+      console.warn('[QR/Cloudflare] Could not launch cloudflared process:', err.message);
+      isStartingTunnel = false;
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[QR/Cloudflare] Launch error:', msg);
+    isStartingTunnel = false;
+  }
+}
+
 /**
  * Asynchronously wait up to maxWaitMs for the Cloudflare tunnel URL to finish handshaking.
  */
-export async function waitForTunnelUrl(maxWaitMs = 1500): Promise<string | null> {
+export async function waitForTunnelUrl(maxWaitMs = 3000): Promise<string | null> {
   const existing = getTunnelUrl();
   if (existing) return existing;
+
+  // Trigger tunnel startup if not already running
+  ensureCloudflareTunnel();
+
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     await new Promise((r) => setTimeout(r, 200));
