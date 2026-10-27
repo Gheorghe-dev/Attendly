@@ -981,10 +981,13 @@ export default function LiveSessionMonitorPage() {
                       <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                         🌍 Accessible from ANY Wi-Fi & 4G/5G
                       </span>
+                    ) : !qrData.url.includes('localhost') && !qrData.url.includes('127.0.0.1') ? (
+                      <span className="text-sky-600 dark:text-sky-400 font-medium">
+                        📶 Accessible on local Wi-Fi
+                      </span>
                     ) : (
-                      <span className="text-amber-500 font-medium flex items-center gap-1">
-                        <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
-                        Connecting Any Wi-Fi access tunnel…
+                      <span className="text-amber-500 font-medium">
+                        ⚠️ Connecting tunnel for worldwide Wi-Fi access…
                       </span>
                     )}
                   </span>

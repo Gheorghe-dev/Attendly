@@ -120,14 +120,7 @@ export function stopCloudflareTunnel(): void {
 }
 
 export function ensureCloudflareTunnel(): void {
-  if (
-    process.env.NODE_ENV === 'test' ||
-    process.env.CI ||
-    process.env.GITHUB_ACTIONS ||
-    process.env.NEXT_PHASE?.includes('build')
-  ) {
-    return;
-  }
+  if (process.env.NODE_ENV === 'test') return;
   if (memoryTunnelUrl || isStartingTunnel) return;
 
   const fsMod = getRuntimeFs();
@@ -140,26 +133,13 @@ export function ensureCloudflareTunnel(): void {
     path.join(process.cwd(), '..', 'bin', binName),
     path.join(process.cwd(), '..', '..', 'bin', binName),
     path.join(process.cwd(), '..', '..', '..', 'bin', binName),
-    path.join(__dirname, 'bin', binName),
-    path.join(__dirname, '..', 'bin', binName),
-    path.join(__dirname, '..', '..', 'bin', binName),
-    path.join(__dirname, '..', '..', '..', 'bin', binName),
-    path.join(__dirname, '..', '..', '..', '..', 'bin', binName),
   ];
   if (process.platform === 'win32') {
-    const home = os.homedir();
-    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    binCandidates.push(path.join(appData, 'Attendly', 'bin', binName));
-    binCandidates.push(path.join(localAppData, 'Programs', 'attendly', 'resources', 'bin', binName));
-    binCandidates.push(path.join(localAppData, 'Programs', 'Attendly', 'resources', 'bin', binName));
-    binCandidates.push(path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Attendly', 'resources', 'bin', binName));
-    binCandidates.push(path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Attendly', 'resources', 'bin', binName));
+    binCandidates.push(path.join(process.env.APPDATA || '', 'Attendly', 'bin', binName));
   }
   const procAny = process as unknown as { resourcesPath?: string };
   if (procAny.resourcesPath) {
     binCandidates.unshift(path.join(procAny.resourcesPath, 'bin', binName));
-    binCandidates.unshift(path.join(procAny.resourcesPath, 'standalone', 'bin', binName));
   }
 
   let localBin: string | null = null;
@@ -174,117 +154,82 @@ export function ensureCloudflareTunnel(): void {
     }
   }
 
-  // On Windows, unblock the binary from SmartScreen
-  if (localBin && process.platform === 'win32') {
-    try {
-      cpMod.execSync(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${localBin}' -ErrorAction SilentlyContinue"`, { windowsHide: true, stdio: 'ignore' });
-    } catch {}
-  }
-
-  // Clean up any stale tunnel process before launching
-  try {
-    if (process.platform === 'win32') {
-      cpMod.execSync('taskkill /F /IM cloudflared.exe >nul 2>&1', { windowsHide: true, stdio: 'ignore' });
-    } else {
-      cpMod.execSync('killall cloudflared >/dev/null 2>&1 || true', { stdio: 'ignore' });
-    }
-  } catch {}
-
   isStartingTunnel = true;
   const port = process.env.PORT || '3000';
   console.log('[QR/Cloudflare] Activating Cloudflare worldwide tunnel for QR code scans...');
 
-  const launchProcess = (protocol = 'http2') => {
-    try {
-      let proc: import('child_process').ChildProcess | null = null;
-      const tunnelArgs = ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--protocol', protocol];
-      if (localBin) {
-        proc = cpMod.spawn(localBin, tunnelArgs, {
-          windowsHide: true,
-          shell: false,
-        });
-      } else {
-        const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-        proc = cpMod.spawn(npxCmd, ['--yes', 'cloudflared', ...tunnelArgs], {
-          windowsHide: true,
-          shell: true,
-        });
-      }
-
-      activeTunnelProc = proc;
-
-      let buffer = '';
-      const onData = (chunk: Buffer | string) => {
-        buffer += chunk.toString();
-        const match = buffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-        if (match && !memoryTunnelUrl) {
-          const url = match[0].trim();
-          memoryTunnelUrl = url;
-          isStartingTunnel = false;
-          console.log('[QR/Cloudflare] Worldwide Cloudflare Tunnel active for QR codes:', url);
-          if (fsMod) {
-            const candidatePaths = [
-              path.join(process.cwd(), '.tunnel_url'),
-              path.join(path.resolve(os.tmpdir()), '.attendly_tunnel'),
-              path.join(path.resolve(os.homedir()), '.attendly_tunnel'),
-            ];
-            try {
-              const home = os.homedir();
-              const appData = process.platform === 'win32'
-                ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'))
-                : process.platform === 'darwin'
-                ? path.join(home, 'Library', 'Application Support')
-                : path.join(home, '.config');
-              const attendlyDir = path.join(appData, 'Attendly');
-              if (!fsMod.existsSync(attendlyDir)) fsMod.mkdirSync(attendlyDir, { recursive: true });
-              candidatePaths.push(path.join(attendlyDir, '.tunnel_url'));
-            } catch {}
-
-            for (const p of candidatePaths) {
-              try { fsMod.writeFileSync(p, url, 'utf-8'); } catch {}
-            }
-          }
-        }
-      };
-
-      proc.stdout?.on('data', onData);
-      proc.stderr?.on('data', onData);
-      proc.on('close', (code) => {
-        activeTunnelProc = null;
-        if (!memoryTunnelUrl) {
-          // If http2 failed, automatically try auto protocol
-          if (protocol === 'http2') {
-            console.warn('[QR/Cloudflare] HTTP/2 connection attempt finished with code', code, '- retrying with auto protocol...');
-            setTimeout(() => launchProcess('auto'), 1000);
-          } else {
-            console.warn('[QR/Cloudflare] Tunnel exited with code', code, '- retrying in 2s...');
-            setTimeout(() => {
-              isStartingTunnel = false;
-              ensureCloudflareTunnel();
-            }, 2000);
-          }
-        } else {
-          isStartingTunnel = false;
-        }
+  try {
+    let proc: import('child_process').ChildProcess | null = null;
+    if (localBin) {
+      proc = cpMod.spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--protocol', 'http2'], {
+        windowsHide: true,
+        shell: false,
       });
-      proc.on('error', (err: Error) => {
-        console.warn('[QR/Cloudflare] Could not launch cloudflared process:', err.message);
-        isStartingTunnel = false;
+    } else {
+      const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+      proc = cpMod.spawn(npxCmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--protocol', 'http2'], {
+        windowsHide: true,
+        shell: true,
       });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn('[QR/Cloudflare] Launch error:', msg);
-      isStartingTunnel = false;
     }
-  };
 
-  launchProcess('http2');
+    activeTunnelProc = proc;
+
+    let buffer = '';
+    const onData = (chunk: Buffer | string) => {
+      buffer += chunk.toString();
+      const match = buffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+      if (match && !memoryTunnelUrl) {
+        const url = match[0].trim();
+        memoryTunnelUrl = url;
+        isStartingTunnel = false;
+        console.log('[QR/Cloudflare] Worldwide Cloudflare Tunnel active for QR codes:', url);
+        if (fsMod) {
+          const candidatePaths = [
+            path.join(process.cwd(), '.tunnel_url'),
+            path.join(path.resolve(os.tmpdir()), '.attendly_tunnel'),
+            path.join(path.resolve(os.homedir()), '.attendly_tunnel'),
+          ];
+          try {
+            const home = os.homedir();
+            const appData = process.platform === 'win32'
+              ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'))
+              : process.platform === 'darwin'
+              ? path.join(home, 'Library', 'Application Support')
+              : path.join(home, '.config');
+            const attendlyDir = path.join(appData, 'Attendly');
+            if (!fsMod.existsSync(attendlyDir)) fsMod.mkdirSync(attendlyDir, { recursive: true });
+            candidatePaths.push(path.join(attendlyDir, '.tunnel_url'));
+          } catch {}
+
+          for (const p of candidatePaths) {
+            try { fsMod.writeFileSync(p, url, 'utf-8'); } catch {}
+          }
+        }
+      }
+    };
+
+    proc.stdout?.on('data', onData);
+    proc.stderr?.on('data', onData);
+    proc.on('close', () => {
+      isStartingTunnel = false;
+      activeTunnelProc = null;
+    });
+    proc.on('error', (err: Error) => {
+      console.warn('[QR/Cloudflare] Could not launch cloudflared process:', err.message);
+      isStartingTunnel = false;
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[QR/Cloudflare] Launch error:', msg);
+    isStartingTunnel = false;
+  }
 }
 
 /**
  * Asynchronously wait up to maxWaitMs for the Cloudflare tunnel URL to finish handshaking.
  */
-export async function waitForTunnelUrl(maxWaitMs = 8000): Promise<string | null> {
+export async function waitForTunnelUrl(maxWaitMs = 6000): Promise<string | null> {
   const existing = getTunnelUrl();
   if (existing) return existing;
 
@@ -400,9 +345,9 @@ export function pickBaseUrl(forceOrigin?: string): string {
     return `http://${lanIp}:${port}`;
   }
 
-  if (app && !isPrivateOrLocalUrl(app)) return app.replace(/\/+$/, '');
-  if (forceOrigin && !isPrivateOrLocalUrl(forceOrigin)) return forceOrigin.replace(/\/+$/, '');
-  return '';
+  if (app) return app.replace(/\/+$/, '');
+  if (forceOrigin) return forceOrigin.replace(/\/+$/, '');
+  return 'http://localhost:3000';
 }
 
 /**

@@ -116,8 +116,8 @@ async function startServer() {
   return serverProc;
 }
 
-async function startCloudflareTunnel(serverProc, protocol = 'http2') {
-  console.log(`  Connecting secure Cloudflare Worldwide Tunnel (${protocol})...`);
+async function startCloudflareTunnel(serverProc) {
+  console.log('  Connecting secure Cloudflare Worldwide Tunnel...');
   console.log('  (Works on ALL phones, cellular 4G/5G, and any Wi-Fi network)\n');
 
   try {
@@ -135,16 +135,12 @@ async function startCloudflareTunnel(serverProc, protocol = 'http2') {
   if (fs.existsSync(localBin)) {
     if (process.platform !== 'win32') {
       try { fs.chmodSync(localBin, 0o755); } catch {}
-    } else {
-      try {
-        execSync(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${localBin}' -ErrorAction SilentlyContinue"`, { stdio: 'ignore' });
-      } catch {}
     }
-    tunnel = spawn(localBin, ['tunnel', '--url', 'http://127.0.0.1:3000', '--no-autoupdate', '--protocol', protocol], {
+    tunnel = spawn(localBin, ['tunnel', '--url', 'http://127.0.0.1:3000', '--no-autoupdate', '--protocol', 'http2'], {
       shell: false,
     });
   } else {
-    tunnel = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', 'http://127.0.0.1:3000', '--no-autoupdate', '--protocol', protocol], {
+    tunnel = spawn('npx', ['--yes', 'cloudflared', 'tunnel', '--url', 'http://127.0.0.1:3000', '--no-autoupdate', '--protocol', 'http2'], {
       shell: true,
     });
   }
@@ -220,23 +216,7 @@ async function startCloudflareTunnel(serverProc, protocol = 'http2') {
   tunnel.stdout.on('data', handleData);
   tunnel.stderr.on('data', handleData);
 
-  let isCleanedUp = false;
-
-  tunnel.on('close', (code) => {
-    if (isCleanedUp) return;
-    if (!tunnelUrl) {
-      if (protocol === 'http2') {
-        console.log('  ⚠️ HTTP/2 handshake did not finish. Retrying with auto protocol in 1.5s...');
-        setTimeout(() => startCloudflareTunnel(serverProc, 'auto'), 1500);
-      } else {
-        console.log('  ⚠️ Tunnel closed. Reconnecting in 2.5s...');
-        setTimeout(() => startCloudflareTunnel(serverProc, 'http2'), 2500);
-      }
-    }
-  });
-
   function cleanup() {
-    isCleanedUp = true;
     console.log('\n  Stopping server and tunnel...');
     try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
     try {

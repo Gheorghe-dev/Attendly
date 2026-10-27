@@ -299,7 +299,7 @@ async function startServer() {
   return proc;
 }
 
-function startCloudflareTunnel(protocol = 'http2') {
+function startCloudflareTunnel() {
   try {
     if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
   } catch {}
@@ -316,16 +316,9 @@ function startCloudflareTunnel(protocol = 'http2') {
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
   const candidateBins = [
     path.join(process.resourcesPath || '', 'bin', binName),
-    path.join(process.resourcesPath || '', 'standalone', 'bin', binName),
     path.join(getUserDataDir(), 'bin', binName),
     path.join(ROOT_DIR, 'bin', binName),
-    path.join(__dirname, '..', 'bin', binName),
   ];
-  if (process.platform === 'win32') {
-    const localAppData = process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local');
-    candidateBins.push(path.join(localAppData, 'Programs', 'attendly', 'resources', 'bin', binName));
-    candidateBins.push(path.join(localAppData, 'Programs', 'Attendly', 'resources', 'bin', binName));
-  }
 
   let localBin = null;
   for (const b of candidateBins) {
@@ -345,8 +338,8 @@ function startCloudflareTunnel(protocol = 'http2') {
           execSync(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${localBin}' -ErrorAction SilentlyContinue"`, { windowsHide: true, stdio: 'ignore' });
         } catch {}
       }
-      console.log(`[Electron] Launching bundled Cloudflare binary (${protocol}):`, localBin);
-      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', protocol], {
+      console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
+      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {
         cwd: getUserDataDir(),
         shell: false,
         windowsHide: true,
@@ -354,7 +347,7 @@ function startCloudflareTunnel(protocol = 'http2') {
     } else if (!app.isPackaged) {
       // In development only, allow falling back to npx
       const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', protocol], {
+      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {
         cwd: getUserDataDir(),
         shell: true,
         windowsHide: true,
@@ -466,25 +459,6 @@ function startCloudflareTunnel(protocol = 'http2') {
           req.end();
         } catch {}
         updateTrayMenu();
-
-        // Auto-reconnect if app is still running
-        if (!isQuitting) {
-          if (protocol === 'http2') {
-            console.log('[Electron] Re-attempting tunnel with auto protocol in 1.5s...');
-            setTimeout(() => {
-              if (!isQuitting && !tunnelUrl) {
-                tunnelProcess = startCloudflareTunnel('auto');
-              }
-            }, 1500);
-          } else {
-            console.log('[Electron] Reconnecting tunnel in 2.5s...');
-            setTimeout(() => {
-              if (!isQuitting && !tunnelUrl) {
-                tunnelProcess = startCloudflareTunnel('http2');
-              }
-            }, 2500);
-          }
-        }
       });
     }
   } catch (err) {

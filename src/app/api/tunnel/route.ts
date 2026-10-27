@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTunnelUrl, setMemoryTunnelUrl, ensureCloudflareTunnel, waitForTunnelUrl } from '@/lib/qrcode';
+import { getTunnelUrl, getLocalIpAddress, setMemoryTunnelUrl } from '@/lib/qrcode';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  let tunnel = getTunnelUrl();
-
-  // If tunnel is not active yet, proactively start it and wait briefly (runtime only, never during build/CI)
-  if (
-    !tunnel &&
-    process.env.NODE_ENV !== 'test' &&
-    !process.env.CI &&
-    !process.env.GITHUB_ACTIONS &&
-    !process.env.NEXT_PHASE?.includes('build')
-  ) {
-    ensureCloudflareTunnel();
-    tunnel = await waitForTunnelUrl(2500);
-  }
-
-  const isWorldwide = Boolean(tunnel && tunnel.includes('trycloudflare.com'));
+  const tunnel = getTunnelUrl();
+  const lanIp = getLocalIpAddress();
+  const port = process.env.PORT || '3000';
+  const lanUrl = lanIp ? `http://${lanIp}:${port}` : null;
+  const localUrl = `http://localhost:${port}`;
+  const bestUrl = tunnel || lanUrl || localUrl;
 
   return NextResponse.json({
-    tunnelUrl: tunnel || null,
-    bestUrl: tunnel || null,
-    isWorldwide,
-    connecting: !isWorldwide,
-    mode: isWorldwide ? 'worldwide' : 'connecting',
+    tunnelUrl: tunnel,
+    lanUrl,
+    localUrl,
+    bestUrl,
+    isWorldwide: Boolean(tunnel),
+    mode: tunnel ? 'worldwide' : lanUrl ? 'lan' : 'local',
   });
 }
 
