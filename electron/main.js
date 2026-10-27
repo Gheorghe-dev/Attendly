@@ -523,8 +523,20 @@ function createMainWindow() {
   mainWindow.once('ready-to-show', showMainWindow);
   mainWindow.webContents.once('did-finish-load', showMainWindow);
 
+  let tunnelLoadRetries = 0;
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     console.warn(`[Electron] did-fail-load: ${errorCode} ${errorDescription} on ${validatedURL}`);
+    if (tunnelUrl && validatedURL && validatedURL.includes('trycloudflare.com') && tunnelLoadRetries < 4) {
+      tunnelLoadRetries++;
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          console.log(`[Electron] Retrying worldwide tunnel URL (attempt ${tunnelLoadRetries})...`);
+          mainWindow.loadURL(tunnelUrl);
+        }
+      }, 1500);
+      return;
+    }
+
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(SERVER_URL);
@@ -813,43 +825,37 @@ app.whenReady().then(async () => {
   buildNativeMenu();
   setupTray();
 
-  // If server is already active, launch main window immediately
+  // Check if server is already responding
   const isAlreadyReady = await checkServerReady(800);
-  if (isAlreadyReady) {
+  if (!isAlreadyReady) {
     if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.webContents.send('status-update', 'Connected! Loading Attendly…');
+      splashWindow.webContents.send('status-update', 'Checking server status…');
     }
-    tunnelProcess = startCloudflareTunnel();
-    createMainWindow();
-    return;
+    serverProcess = await startServer();
+
+    // Poll until Next.js is responding
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 600));
+      ready = await checkServerReady();
+      if (ready) break;
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('status-update', `Connecting to local engine (${i + 1}s)…`);
+      }
+    }
+  } else {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('status-update', 'Local engine connected! Initializing worldwide tunnel…');
+    }
   }
 
   if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send('status-update', 'Checking server status…');
-  }
-  serverProcess = await startServer();
-
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send('status-update', 'Starting Cloudflare worldwide tunnel…');
+    splashWindow.webContents.send('status-update', 'Starting Cloudflare worldwide link for any Wi-Fi…');
   }
   tunnelProcess = startCloudflareTunnel();
 
-  // Poll until Next.js is responding
-  let ready = false;
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 600));
-    ready = await checkServerReady();
-    if (ready) break;
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.webContents.send('status-update', `Connecting to local engine (${i + 1}s)…`);
-    }
-  }
-
-  // Allow up to 10 seconds for Worldwide Tunnel to connect before opening main window
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send('status-update', 'Connecting Cloudflare worldwide link for any Wi-Fi…');
-  }
-  for (let j = 0; j < 20; j++) {
+  // Allow up to 14 seconds for Worldwide Tunnel to connect before opening main window
+  for (let j = 0; j < 28; j++) {
     if (tunnelUrl) break;
     await new Promise((r) => setTimeout(r, 500));
     if (splashWindow && !splashWindow.isDestroyed()) {
@@ -863,7 +869,7 @@ app.whenReady().then(async () => {
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.webContents.send(
       'status-update',
-      tunnelUrl ? 'Cloudflare link ready! Loading Attendly…' : 'Ready! Loading Attendly…'
+      tunnelUrl ? 'Cloudflare worldwide link active! Loading Attendly…' : 'Ready! Loading Attendly…'
     );
   }
 

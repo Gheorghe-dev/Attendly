@@ -66,6 +66,24 @@ try {
     stdio: 'inherit',
   });
 
+  // Pre-seed template database with default demo professor so fresh installer runs work immediately
+  const tsxCli = path.join(ROOT_DIR, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (fs.existsSync(tsxCli)) {
+    try {
+      execFileSync(process.execPath, [tsxCli, path.join(ROOT_DIR, 'prisma', 'seed.ts')], {
+        cwd: ROOT_DIR,
+        env: {
+          ...process.env,
+          DATABASE_URL: `file:./${templateName}`,
+        },
+        stdio: 'inherit',
+      });
+      console.log('[prepare-standalone] Seeded template database with demo professor account.');
+    } catch (seedErr) {
+      console.warn('[prepare-standalone] Could not seed template database:', seedErr.message);
+    }
+  }
+
   fs.rmSync(prismaDest, { recursive: true, force: true });
   fs.mkdirSync(prismaDest, { recursive: true });
   fs.copyFileSync(templateDb, path.join(prismaDest, 'template.db'));
