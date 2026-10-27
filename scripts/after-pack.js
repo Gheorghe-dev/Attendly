@@ -115,9 +115,7 @@ exports.default = async function (context) {
     '# Attendly – auto-generated .env for packaged build',
     'DATABASE_URL="file:./prisma/dev.db"',
     `NEXTAUTH_SECRET="${require('crypto').randomBytes(32).toString('base64url')}"`,
-    'NEXTAUTH_URL="http://localhost:3000"',
     'AUTH_TRUST_HOST="true"',
-    'APP_URL="http://localhost:3000"',
     'DEV_MODE_EMAIL="1"',
     '',
   ].join('\n');

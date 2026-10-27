@@ -255,7 +255,6 @@ async function startServer() {
       DATABASE_URL: dbUrl,
       NEXTAUTH_SECRET: authSecret,
       AUTH_SECRET: authSecret,
-      NEXTAUTH_URL: SERVER_URL,
       AUTH_TRUST_HOST: 'true',
       ELECTRON_RUN_AS_NODE: '1', // Uses Electron's built-in Node runtime!
     },
@@ -294,6 +293,15 @@ function startCloudflareTunnel() {
     if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
   } catch {}
 
+  // Clean up any stale tunnel process before starting
+  try {
+    if (process.platform === 'win32') {
+      exec('taskkill /F /IM cloudflared.exe >nul 2>&1', { windowsHide: true });
+    } else {
+      exec('killall cloudflared >/dev/null 2>&1 || true');
+    }
+  } catch {}
+
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
   const candidateBins = [
     path.join(process.resourcesPath || '', 'bin', binName),
@@ -316,7 +324,7 @@ function startCloudflareTunnel() {
         try { fs.chmodSync(localBin, 0o755); } catch {}
       }
       console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
-      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+      proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'], {
         cwd: getUserDataDir(),
         shell: false,
         windowsHide: true,
@@ -324,7 +332,7 @@ function startCloudflareTunnel() {
     } else if (!app.isPackaged) {
       // In development only, allow falling back to npx
       const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`], {
+      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'], {
         cwd: getUserDataDir(),
         shell: true,
         windowsHide: true,
@@ -339,9 +347,19 @@ function startCloudflareTunnel() {
         console.warn('[Electron] Cloudflare tunnel process error:', err.message);
       });
 
+      // Pipe tunnel output to persistent tunnel.log in userData for complete transparency
+      try {
+        const tunnelLog = path.join(getUserDataDir(), 'tunnel.log');
+        const tunnelStream = fs.createWriteStream(tunnelLog, { flags: 'a' });
+        proc.stdout?.pipe(tunnelStream);
+        proc.stderr?.pipe(tunnelStream);
+      } catch {}
+
+      let outputBuffer = '';
       function handleData(data) {
         const str = data.toString();
-        const match = str.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+        outputBuffer += str;
+        const match = outputBuffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
         if (match && !tunnelUrl) {
           tunnelUrl = match[0];
           console.log('[Electron] Worldwide Tunnel active:', tunnelUrl);
@@ -377,6 +395,11 @@ function startCloudflareTunnel() {
           updateTrayMenu();
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.setTitle(`Attendly — 🌍 Accessible on any Wi-Fi: ${tunnelUrl}`);
+            const currentUrl = mainWindow.webContents.getURL();
+            if (!currentUrl || currentUrl.startsWith('http://127.0.0.1') || currentUrl.startsWith('http://localhost')) {
+              mainWindow.loadURL(tunnelUrl);
+            }
+            shell.openExternal(tunnelUrl);
           }
         }
       }
@@ -488,9 +511,17 @@ function createMainWindow() {
   // Failsafe: if neither ready-to-show nor did-finish-load fired within 3.5s, force show
   setTimeout(showMainWindow, 3500);
 
+  const isAllowedInternal = (url) => {
+    if (!url) return false;
+    if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true;
+    if (tunnelUrl && url.startsWith(tunnelUrl)) return true;
+    if (url.includes('.trycloudflare.com')) return true;
+    return false;
+  };
+
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+    if (isAllowedInternal(url)) {
       return { action: 'allow' };
     }
     shell.openExternal(url);
@@ -498,7 +529,7 @@ function createMainWindow() {
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('http://localhost') && !url.startsWith('http://127.0.0.1')) {
+    if (!isAllowedInternal(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
@@ -510,7 +541,11 @@ function createMainWindow() {
     app.quit();
   });
 
-  mainWindow.loadURL(SERVER_URL);
+  const activeUrl = tunnelUrl || SERVER_URL;
+  mainWindow.loadURL(activeUrl);
+  if (tunnelUrl) {
+    shell.openExternal(tunnelUrl);
+  }
 }
 
 function buildNativeMenu() {
@@ -786,19 +821,25 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Allow up to 4 seconds for Worldwide Tunnel to connect before opening main window
+  // Allow up to 10 seconds for Worldwide Tunnel to connect before opening main window
   if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send('status-update', 'Connecting worldwide tunnel for any Wi-Fi access…');
+    splashWindow.webContents.send('status-update', 'Connecting Cloudflare worldwide link for any Wi-Fi…');
   }
-  for (let j = 0; j < 8; j++) {
+  for (let j = 0; j < 20; j++) {
     if (tunnelUrl) break;
     await new Promise((r) => setTimeout(r, 500));
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send(
+        'status-update',
+        `Connecting Cloudflare worldwide link (${Math.round((j + 1) * 0.5)}s)…`
+      );
+    }
   }
 
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.webContents.send(
       'status-update',
-      tunnelUrl ? 'Worldwide access active! Loading Attendly…' : 'Ready! Loading Attendly…'
+      tunnelUrl ? 'Cloudflare link ready! Loading Attendly…' : 'Ready! Loading Attendly…'
     );
   }
 
