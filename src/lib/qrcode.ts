@@ -1,7 +1,22 @@
 import QRCode from 'qrcode';
 import os from 'os';
-import fs from 'fs';
 import path from 'path';
+
+declare const __non_webpack_require__: ((id: string) => typeof import('fs')) | undefined;
+
+function getRuntimeFs(): typeof import('fs') | null {
+  try {
+    if (typeof __non_webpack_require__ !== 'undefined') {
+      return __non_webpack_require__('fs');
+    }
+    if (typeof window === 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const dynamicRequire = eval('require') as (id: string) => typeof import('fs');
+      return dynamicRequire('fs');
+    }
+  } catch {}
+  return null;
+}
 
 let memoryTunnelUrl: string | null = null;
 
@@ -42,9 +57,7 @@ export function getTunnelUrl(): string | null {
 
     if (process.platform === 'win32') {
       const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-      const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
       candidates.push(path.join(appData, 'Attendly', '.tunnel_url'));
-      candidates.push(path.join(localAppData, 'Attendly', '.tunnel_url'));
     } else if (process.platform === 'darwin') {
       candidates.push(path.join(home, 'Library', 'Application Support', 'Attendly', '.tunnel_url'));
     } else {
@@ -58,13 +71,16 @@ export function getTunnelUrl(): string | null {
     }
   } catch {}
 
+  const fsMod = getRuntimeFs();
+  if (!fsMod) return null;
+
   for (const p of candidates) {
     try {
-      if (fs.existsSync(p)) {
-        const stat = fs.statSync(p);
+      if (fsMod.existsSync(p)) {
+        const stat = fsMod.statSync(p);
         const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
         if (ageHours <= 24) {
-          const content = fs.readFileSync(p, 'utf-8').trim();
+          const content = fsMod.readFileSync(p, 'utf-8').trim();
           if (content && content.startsWith('http')) {
             memoryTunnelUrl = content;
             return content;
