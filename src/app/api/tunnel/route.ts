@@ -28,6 +28,10 @@ export async function POST(req: NextRequest) {
       setMemoryTunnelUrl(body.url.trim());
       return NextResponse.json({ success: true, url: body.url.trim() });
     }
+    if (body?.url === null || body?.url === '') {
+      setMemoryTunnelUrl(null);
+      return NextResponse.json({ success: true, url: null });
+    }
     return NextResponse.json({ error: 'Missing or invalid url string' }, { status: 400 });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

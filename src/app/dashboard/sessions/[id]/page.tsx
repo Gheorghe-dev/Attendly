@@ -126,7 +126,20 @@ export default function LiveSessionMonitorPage() {
       }
       if (qrRes.ok) {
         const qData = await qrRes.json();
-        setQrData(qData);
+        if (qData?.qr) {
+          setQrData(qData);
+        }
+      } else {
+        // Fallback retry after brief pause in case server was initializing
+        setTimeout(async () => {
+          try {
+            const retryRes = await fetch(`/api/sessions/${id}/qr`);
+            if (retryRes.ok) {
+              const retryData = await retryRes.json();
+              if (retryData?.qr) setQrData(retryData);
+            }
+          } catch {}
+        }, 1200);
       }
     } finally {
       setLoading(false);
@@ -143,7 +156,7 @@ export default function LiveSessionMonitorPage() {
     if (isWorldwide) return;
 
     let attempts = 0;
-    const maxAttempts = 20; // 30 seconds max polling
+    const maxAttempts = 30; // 45 seconds polling
 
     const interval = setInterval(async () => {
       attempts++;
@@ -156,7 +169,7 @@ export default function LiveSessionMonitorPage() {
         const qrRes = await fetch(`/api/sessions/${id}/qr`);
         if (qrRes.ok) {
           const qData = await qrRes.json();
-          if (qData?.url) {
+          if (qData?.url && qData?.qr) {
             setQrData(qData);
             if (qData.url.includes('trycloudflare.com')) {
               clearInterval(interval);
@@ -892,8 +905,23 @@ export default function LiveSessionMonitorPage() {
                   className="w-full h-auto rounded"
                 />
               ) : (
-                <div className="w-[196px] h-[196px] bg-muted/30 flex items-center justify-center text-muted-foreground">
+                <div className="w-[196px] h-[196px] bg-muted/30 flex flex-col items-center justify-center text-muted-foreground p-3 gap-2">
                   <Loader2 className="w-6 h-6 animate-spin text-accent" />
+                  <span className="text-[11px] font-mono">Generating QR…</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetch(`/api/sessions/${id}/qr`)
+                        .then((r) => r.json())
+                        .then((d) => {
+                          if (d?.qr) setQrData(d);
+                        })
+                        .catch(() => {});
+                    }}
+                    className="text-[10px] text-accent hover:underline font-mono"
+                  >
+                    Click to reload
+                  </button>
                 </div>
               )}
             </div>

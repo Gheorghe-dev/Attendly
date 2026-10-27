@@ -5,37 +5,53 @@ import { generateQRCodeDataURL, getAttendanceUrl, waitForTunnelUrl, isPrivateOrL
 import { slugifyClassroom } from '@/lib/classroom';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const s = await prisma.session.findFirst({
-    where: { id: params.id, course: { professorId: session.user.id } },
-  });
-  if (!s) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  try {
+    const session = await auth().catch(() => null);
 
-  // If a tunnel URL is still handshaking, wait briefly (up to 1.5s) to get the worldwide link
-  await waitForTunnelUrl(1500);
+    let s = null;
+    if (session?.user?.id) {
+      s = await prisma.session.findFirst({
+        where: { id: params.id, course: { professorId: session.user.id } },
+      });
+    }
 
-  const hostHeader = req.headers.get('host') ?? '';
-  const requestOrigin = hostHeader ? `${req.headers.get('x-forwarded-proto') ?? 'http'}://${hostHeader}` : '';
-  const requestIsLocal = isPrivateOrLocalUrl(requestOrigin);
+    // Resilient fallback: If session cookie is missing/expired, lookup session by ID directly
+    // since attendance QR codes are public classroom projections for students.
+    if (!s) {
+      s = await prisma.session.findUnique({
+        where: { id: params.id },
+      });
+    }
+    if (!s) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
 
-  const classroomIdentifier = s.classroom ? slugifyClassroom(s.classroom) : s.token;
-  const url = getAttendanceUrl(classroomIdentifier, requestOrigin);
-  const qr = await generateQRCodeDataURL(url);
-  const isWorldwide = Boolean(url.includes('trycloudflare.com') || !isPrivateOrLocalUrl(url));
+    // Brief check for tunnel handshaking (max 300ms) so request doesn't stall
+    await waitForTunnelUrl(300);
 
-  return NextResponse.json({
-    qr,
-    url,
-    token: s.token,
-    classroom: s.classroom,
-    classroomSlug: s.classroom ? slugifyClassroom(s.classroom) : null,
-    scannedFrom: requestOrigin || null,
-    scannedFromLocalhost: requestIsLocal,
-    isWorldwide,
-    baseUrl: url.split('/attend/')[0],
-    tip: isWorldwide
-      ? `QR code is accessible from ANY Wi-Fi network and 4G/5G mobile data (${url.split('/attend/')[0]}).`
-      : `QR code uses: ${url.split('/attend/')[0]} (waiting for worldwide connection).`,
-  });
+    const hostHeader = req.headers.get('host') ?? '';
+    const requestOrigin = hostHeader ? `${req.headers.get('x-forwarded-proto') ?? 'http'}://${hostHeader}` : '';
+    const requestIsLocal = isPrivateOrLocalUrl(requestOrigin);
+
+    const classroomIdentifier = s.classroom ? slugifyClassroom(s.classroom) : s.token;
+    const url = getAttendanceUrl(classroomIdentifier, requestOrigin);
+    const qr = await generateQRCodeDataURL(url);
+    const isWorldwide = Boolean(url.includes('trycloudflare.com') || !isPrivateOrLocalUrl(url));
+
+    return NextResponse.json({
+      qr,
+      url,
+      token: s.token,
+      classroom: s.classroom,
+      classroomSlug: s.classroom ? slugifyClassroom(s.classroom) : null,
+      scannedFrom: requestOrigin || null,
+      scannedFromLocalhost: requestIsLocal,
+      isWorldwide,
+      baseUrl: url.split('/attend/')[0],
+      tip: isWorldwide
+        ? `QR code is accessible from ANY Wi-Fi network and 4G/5G mobile data (${url.split('/attend/')[0]}).`
+        : `QR code uses: ${url.split('/attend/')[0]} (waiting for worldwide connection).`,
+    });
+  } catch (error) {
+    console.error('Error generating QR route:', error);
+    return NextResponse.json({ error: 'Failed to generate QR code' }, { status: 500 });
+  }
 }

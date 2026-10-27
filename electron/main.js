@@ -236,6 +236,16 @@ async function startServer() {
   const secretFile = path.join(getUserDataDir(), '.auth_secret');
   let authSecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
   if (!authSecret) {
+    const envFile = path.join(ROOT_DIR, '.env');
+    if (fs.existsSync(envFile)) {
+      try {
+        const envText = fs.readFileSync(envFile, 'utf-8');
+        const match = envText.match(/^NEXTAUTH_SECRET=["']?([^"'\r\n]+)["']?/m);
+        if (match && match[1]) authSecret = match[1].trim();
+      } catch {}
+    }
+  }
+  if (!authSecret) {
     if (fs.existsSync(secretFile)) {
       try { authSecret = fs.readFileSync(secretFile, 'utf-8').trim(); } catch {}
     }
@@ -363,73 +373,95 @@ function startCloudflareTunnel() {
         outputBuffer += str;
         const match = outputBuffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
         if (match && !tunnelUrl) {
-          tunnelUrl = match[0];
-          console.log('[Electron] Worldwide Tunnel active:', tunnelUrl);
+          const rawUrl = match[0];
+          console.log('[Electron] Discovered Cloudflare tunnel URL:', rawUrl);
 
-          // 1. Write to userData and common discovery paths
-          const candidatePaths = [
-            TUNNEL_FILE,
-            path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
-            path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
-            path.join(ROOT_DIR, '.tunnel_url'),
-          ];
-          if (globalServerCwd) {
-            candidatePaths.push(path.join(globalServerCwd, '.tunnel_url'));
-          }
-          if (process.resourcesPath) {
-            candidatePaths.push(path.join(process.resourcesPath, 'standalone', '.tunnel_url'));
-            candidatePaths.push(path.join(process.resourcesPath, 'bin', '.tunnel_url'));
-          }
+          // Allow Cloudflare 2.5 seconds to register edge DNS before activating
+          setTimeout(() => {
+            tunnelUrl = rawUrl;
+            console.log('[Electron] Cloudflare Worldwide Tunnel active for QR scans:', tunnelUrl);
 
-          for (const targetPath of candidatePaths) {
-            try {
-              fs.writeFileSync(targetPath, tunnelUrl, 'utf-8');
-            } catch {}
-          }
-
-          // 2. Notify Next.js server via HTTP POST with automatic retry
-          const notifyNextServer = (retries = 6) => {
-            try {
-              const postData = JSON.stringify({ url: tunnelUrl });
-              const req = http.request(
-                `http://127.0.0.1:${PORT}/api/tunnel`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData),
-                  },
-                  timeout: 2000,
-                },
-                (res) => {
-                  if (res.statusCode !== 200 && retries > 0) {
-                    setTimeout(() => notifyNextServer(retries - 1), 1000);
-                  }
-                }
-              );
-              req.on('error', () => {
-                if (retries > 0) setTimeout(() => notifyNextServer(retries - 1), 1000);
-              });
-              req.write(postData);
-              req.end();
-            } catch {}
-          };
-          notifyNextServer();
-
-          updateTrayMenu();
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setTitle(`Attendly — 🌍 Accessible on any Wi-Fi: ${tunnelUrl}`);
-            const currentUrl = mainWindow.webContents.getURL();
-            if (!currentUrl || currentUrl.startsWith('http://127.0.0.1') || currentUrl.startsWith('http://localhost')) {
-              mainWindow.loadURL(tunnelUrl);
+            // 1. Write to userData and common discovery paths
+            const candidatePaths = [
+              TUNNEL_FILE,
+              path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
+              path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
+              path.join(ROOT_DIR, '.tunnel_url'),
+            ];
+            if (globalServerCwd) {
+              candidatePaths.push(path.join(globalServerCwd, '.tunnel_url'));
             }
-            shell.openExternal(tunnelUrl);
-          }
+            if (process.resourcesPath) {
+              candidatePaths.push(path.join(process.resourcesPath, 'standalone', '.tunnel_url'));
+              candidatePaths.push(path.join(process.resourcesPath, 'bin', '.tunnel_url'));
+            }
+
+            for (const targetPath of candidatePaths) {
+              try {
+                fs.writeFileSync(targetPath, tunnelUrl, 'utf-8');
+              } catch {}
+            }
+
+            // 2. Notify Next.js server via HTTP POST with automatic retry
+            const notifyNextServer = (retries = 6) => {
+              try {
+                const postData = JSON.stringify({ url: tunnelUrl });
+                const req = http.request(
+                  `http://127.0.0.1:${PORT}/api/tunnel`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(postData),
+                    },
+                    timeout: 2000,
+                  },
+                  (res) => {
+                    if (res.statusCode !== 200 && retries > 0) {
+                      setTimeout(() => notifyNextServer(retries - 1), 1000);
+                    }
+                  }
+                );
+                req.on('error', () => {
+                  if (retries > 0) setTimeout(() => notifyNextServer(retries - 1), 1000);
+                });
+                req.write(postData);
+                req.end();
+              } catch {}
+            };
+            notifyNextServer();
+
+            updateTrayMenu();
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.setTitle(`Attendly — 🌍 Accessible on any Wi-Fi & 4G/5G`);
+            }
+          }, 2500);
         }
       }
 
       proc.stdout?.on('data', handleData);
       proc.stderr?.on('data', handleData);
+
+      proc.on('close', (code) => {
+        console.warn(`[Electron] Cloudflare tunnel process exited with code ${code}`);
+        tunnelUrl = null;
+        try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
+        try {
+          const postData = JSON.stringify({ url: null });
+          const req = http.request(`http://127.0.0.1:${PORT}/api/tunnel`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData),
+            },
+            timeout: 1000,
+          });
+          req.on('error', () => {});
+          req.write(postData);
+          req.end();
+        } catch {}
+        updateTrayMenu();
+      });
     }
   } catch (err) {
     console.warn('[Electron] Could not launch tunnel:', err.message);
@@ -523,20 +555,8 @@ function createMainWindow() {
   mainWindow.once('ready-to-show', showMainWindow);
   mainWindow.webContents.once('did-finish-load', showMainWindow);
 
-  let tunnelLoadRetries = 0;
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
     console.warn(`[Electron] did-fail-load: ${errorCode} ${errorDescription} on ${validatedURL}`);
-    if (tunnelUrl && validatedURL && validatedURL.includes('trycloudflare.com') && tunnelLoadRetries < 4) {
-      tunnelLoadRetries++;
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          console.log(`[Electron] Retrying worldwide tunnel URL (attempt ${tunnelLoadRetries})...`);
-          mainWindow.loadURL(tunnelUrl);
-        }
-      }, 1500);
-      return;
-    }
-
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(SERVER_URL);
@@ -550,8 +570,6 @@ function createMainWindow() {
   const isAllowedInternal = (url) => {
     if (!url) return false;
     if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true;
-    if (tunnelUrl && url.startsWith(tunnelUrl)) return true;
-    if (url.includes('.trycloudflare.com')) return true;
     return false;
   };
 
@@ -577,11 +595,7 @@ function createMainWindow() {
     app.quit();
   });
 
-  const activeUrl = tunnelUrl || SERVER_URL;
-  mainWindow.loadURL(activeUrl);
-  if (tunnelUrl) {
-    shell.openExternal(tunnelUrl);
-  }
+  mainWindow.loadURL(SERVER_URL);
 }
 
 function buildNativeMenu() {
@@ -606,14 +620,17 @@ function buildNativeMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Open Public Worldwide Link in Browser',
+          label: 'Copy Student Attendance Link (Cloudflare)',
           click: () => {
-            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null) || SERVER_URL;
-            shell.openExternal(url);
+            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
+            if (url) {
+              const { clipboard } = require('electron');
+              clipboard.writeText(url);
+            }
           },
         },
         {
-          label: 'Open Localhost in Browser',
+          label: 'Open Dashboard in Web Browser',
           click: () => shell.openExternal(SERVER_URL),
         },
         { type: 'separator' },
