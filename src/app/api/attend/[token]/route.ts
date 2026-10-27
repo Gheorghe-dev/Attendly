@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       req.headers.get('cf-connecting-ip') ||
       (forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1');
     const ip = clientIp;
-    const rate = checkRateLimit(ip, 30, 60000);
+    const rate = checkRateLimit(ip, 120, 60000);
     if (!rate.allowed) {
       return NextResponse.json(
         {
@@ -70,6 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     const classroomName = formatClassroomName(rawToken);
 
     const matchCriteria = [
+      { id: rawToken },
       { token: rawToken },
       { token: tokenSlug },
       { classroom: rawToken },
@@ -398,6 +399,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   const classroomName = formatClassroomName(rawToken);
 
   const matchCriteria = [
+    { id: rawToken },
     { token: rawToken },
     { token: tokenSlug },
     { classroom: rawToken },

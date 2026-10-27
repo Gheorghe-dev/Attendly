@@ -19,9 +19,11 @@ for /f "tokens=5" %%P in ('netstat -aon ^| findstr :3000 ^| findstr LISTENING 2^
 
 REM Also terminate any orphaned cloudflared tunnels and clean up .tunnel_url
 taskkill /F /IM cloudflared.exe >nul 2>&1
-if exist "%~dp0.tunnel_url" (
-    del /f /q "%~dp0.tunnel_url" >nul 2>&1
-)
+if exist "%~dp0.tunnel_url" del /f /q "%~dp0.tunnel_url" >nul 2>&1
+if exist "%TEMP%\.attendly_tunnel" del /f /q "%TEMP%\.attendly_tunnel" >nul 2>&1
+if exist "%USERPROFILE%\.attendly_tunnel" del /f /q "%USERPROFILE%\.attendly_tunnel" >nul 2>&1
+if exist "%APPDATA%\Attendly\.tunnel_url" del /f /q "%APPDATA%\Attendly\.tunnel_url" >nul 2>&1
+if exist "%LOCALAPPDATA%\Attendly\.tunnel_url" del /f /q "%LOCALAPPDATA%\Attendly\.tunnel_url" >nul 2>&1
 
 if "%KILLED%"=="0" (
     echo   Nothing is currently running on port 3000.

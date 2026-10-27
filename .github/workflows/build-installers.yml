@@ -1,9 +1,12 @@
 # ============================================================================
 # Attendly — Build Desktop Installers (Windows, macOS, Linux)
 # ============================================================================
-# Publishes installers on version tags; manual builds can optionally create a draft release.
-# Produces NSIS installer (.exe), macOS DMG (.dmg), and Linux AppImage/.deb packages.
-# Artifacts are uploaded to the GitHub Release automatically.
+# Publishes installers on version tags or GitHub Releases; produces:
+# - Windows: Attendly Setup <version>.exe (1-Click NSIS installer)
+# - macOS: Attendly-<version>.dmg & Attendly-<version>-arm64.dmg
+# - Linux: Attendly-<version>.AppImage & .deb
+# - Scripts: Install-Attendly-Windows.bat & Install-Attendly-Mac.command
+# All artifacts are uploaded to the GitHub Release automatically.
 
 name: Build Desktop Installers
 
@@ -11,6 +14,8 @@ on:
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       upload_release:
@@ -108,6 +113,7 @@ jobs:
           name: attendly-${{ matrix.platform }}
           path: |
             release/${{ matrix.artifact_glob }}
+            release/*.dmg
             release/*.pkg
             release/*.zip
             release/*.deb
@@ -117,20 +123,39 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_release == 'true')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload_release == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: pkg_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', steps.pkg_version.outputs.version) }}
+          draft: false
+          prerelease: false
           generate_release_notes: true
-          files: dist/*
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.pkg
+            Install-Attendly-Windows.bat
+            Install-Attendly-Mac.command
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -328,6 +328,35 @@ function startCloudflareTunnel() {
     }
   }
 
+  // Self-healing download fallback if binary is not yet present
+  if (!localBin) {
+    try {
+      const userBinDir = path.join(getUserDataDir(), 'bin');
+      const targetBin = path.join(userBinDir, binName);
+      if (!fs.existsSync(userBinDir)) fs.mkdirSync(userBinDir, { recursive: true });
+
+      console.log('[Electron] Bundled binary not detected. Fetching cloudflared for', process.platform, process.arch);
+      if (process.platform === 'win32') {
+        execSync(`curl.exe -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -o "${targetBin}"`, { windowsHide: true, timeout: 35000 });
+      } else if (process.platform === 'darwin') {
+        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+        execSync(`curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${arch}.tgz" -o /tmp/cf_attendly.tgz && tar -xzf /tmp/cf_attendly.tgz -C "${userBinDir}" && rm -f /tmp/cf_attendly.tgz`, { timeout: 35000 });
+      } else if (process.platform === 'linux') {
+        execSync(`curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "${targetBin}"`, { timeout: 35000 });
+      }
+
+      if (fs.existsSync(targetBin)) {
+        if (process.platform !== 'win32') {
+          try { fs.chmodSync(targetBin, 0o755); } catch {}
+        }
+        localBin = targetBin;
+        console.log('[Electron] Self-healing download complete:', localBin);
+      }
+    } catch (dlErr) {
+      console.warn('[Electron] Self-healing cloudflared download could not be completed:', dlErr.message);
+    }
+  }
+
   let proc = null;
   try {
     if (localBin) {
@@ -901,7 +930,16 @@ function cleanup() {
   isQuitting = true;
   console.log('[Electron] Cleaning up child processes…');
   try {
-    if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
+    const candidatePaths = [
+      TUNNEL_FILE,
+      path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
+      path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
+      path.join(ROOT_DIR, '.tunnel_url'),
+    ];
+    if (globalServerCwd) candidatePaths.push(path.join(globalServerCwd, '.tunnel_url'));
+    for (const c of candidatePaths) {
+      try { if (fs.existsSync(c)) fs.unlinkSync(c); } catch {}
+    }
   } catch {}
   if (process.platform === 'win32') {
     try {

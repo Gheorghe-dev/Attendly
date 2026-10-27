@@ -23,5 +23,6 @@ fi
 # Terminate any orphaned cloudflared tunnels
 killall cloudflared 2>/dev/null || true
 rm -f .tunnel_url 2>/dev/null || true
+rm -f "$TMPDIR/.attendly_tunnel" "/tmp/.attendly_tunnel" "$HOME/.attendly_tunnel" "$HOME/.config/Attendly/.tunnel_url" 2>/dev/null || true
 
 echo "✓ Attendly server stopped successfully."

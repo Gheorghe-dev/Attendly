@@ -35,8 +35,33 @@ function ensurePrerequisites() {
 }
 ensurePrerequisites();
 
-// Clean up stale tunnel file on start
-try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
+function cleanAllTunnelFiles() {
+  try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
+  try {
+    const home = require('os').homedir();
+    const tmp = require('os').tmpdir();
+    const candidates = [
+      path.join(tmp, '.attendly_tunnel'),
+      path.join(home, '.attendly_tunnel'),
+    ];
+    if (process.platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+      const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+      candidates.push(path.join(appData, 'Attendly', '.tunnel_url'));
+      candidates.push(path.join(localAppData, 'Attendly', '.tunnel_url'));
+    } else if (process.platform === 'darwin') {
+      candidates.push(path.join(home, 'Library', 'Application Support', 'Attendly', '.tunnel_url'));
+    } else {
+      candidates.push(path.join(home, '.config', 'Attendly', '.tunnel_url'));
+    }
+    for (const c of candidates) {
+      try { if (fs.existsSync(c)) fs.unlinkSync(c); } catch {}
+    }
+  } catch {}
+}
+
+// Clean up stale tunnel files on start
+cleanAllTunnelFiles();
 
 function checkServerReady(port = 3000) {
   return new Promise((resolve) => {
@@ -218,7 +243,7 @@ async function startCloudflareTunnel(serverProc) {
 
   function cleanup() {
     console.log('\n  Stopping server and tunnel...');
-    try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
+    cleanAllTunnelFiles();
     try {
       if (process.platform === 'win32') {
         exec('taskkill /F /IM cloudflared.exe >nul 2>&1');
@@ -238,7 +263,7 @@ async function startCloudflareTunnel(serverProc) {
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
   process.on('exit', () => {
-    try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
+    cleanAllTunnelFiles();
   });
 }
 

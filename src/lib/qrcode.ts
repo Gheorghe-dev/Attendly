@@ -24,23 +24,7 @@ export function setMemoryTunnelUrl(url: string | null) {
   memoryTunnelUrl = url;
 }
 
-export function getTunnelUrl(): string | null {
-  // 1. In-memory cached URL (fastest & most up-to-date)
-  if (memoryTunnelUrl && memoryTunnelUrl.startsWith('http')) {
-    return memoryTunnelUrl;
-  }
-
-  if (process.env.NODE_ENV === 'test') return null;
-
-  // 2. Direct environment variable
-  if (process.env.PUBLIC_TUNNEL_URL?.startsWith('http')) {
-    return process.env.PUBLIC_TUNNEL_URL.trim();
-  }
-  if (process.env.TUNNEL_URL?.startsWith('http')) {
-    return process.env.TUNNEL_URL.trim();
-  }
-
-  // 3. Scan candidate disk paths across Windows, macOS, and Linux
+export function getCandidateTunnelFilePaths(): string[] {
   const candidates: string[] = [
     path.join(process.cwd(), '.tunnel_url'),
     path.join(process.cwd(), '..', '.tunnel_url'),
@@ -51,13 +35,14 @@ export function getTunnelUrl(): string | null {
     const home = os.homedir();
     const tmp = os.tmpdir();
 
-    // Cross-process temp/home indicators
     candidates.push(path.join(tmp, '.attendly_tunnel'));
     candidates.push(path.join(home, '.attendly_tunnel'));
 
     if (process.platform === 'win32') {
       const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+      const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
       candidates.push(path.join(appData, 'Attendly', '.tunnel_url'));
+      candidates.push(path.join(localAppData, 'Attendly', '.tunnel_url'));
     } else if (process.platform === 'darwin') {
       candidates.push(path.join(home, 'Library', 'Application Support', 'Attendly', '.tunnel_url'));
     } else {
@@ -71,6 +56,103 @@ export function getTunnelUrl(): string | null {
     }
   } catch {}
 
+  return candidates;
+}
+
+export function cleanCandidateTunnelFiles(): void {
+  const fsMod = getRuntimeFs();
+  if (!fsMod) return;
+  const paths = getCandidateTunnelFilePaths();
+  for (const p of paths) {
+    try {
+      if (fsMod.existsSync(p)) {
+        fsMod.unlinkSync(p);
+      }
+    } catch {}
+  }
+}
+
+export function invalidateTunnelUrl(): void {
+  memoryTunnelUrl = null;
+  cleanCandidateTunnelFiles();
+}
+
+export function isCloudflaredProcessRunning(): boolean {
+  if (activeTunnelProc && activeTunnelProc.exitCode === null && !activeTunnelProc.killed) {
+    return true;
+  }
+  const cpMod = getRuntimeChildProcess();
+  if (!cpMod) return false;
+  try {
+    if (process.platform === 'win32') {
+      const out = cpMod.execSync('tasklist', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+        timeout: 1000,
+      });
+      return out.toLowerCase().includes('cloudflared.exe');
+    } else {
+      const out = cpMod.execSync('pgrep -x cloudflared || true', {
+        encoding: 'utf-8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 1000,
+      });
+      return out.trim().length > 0;
+    }
+  } catch {
+    return false;
+  }
+}
+
+export async function isTunnelUrlAlive(url?: string | null, timeoutMs = 2500): Promise<boolean> {
+  if (!url || !url.startsWith('http')) return false;
+  try {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(`${url.replace(/\/+$/, '')}/api/health`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: ctrl.signal,
+    });
+    clearTimeout(id);
+    // Cloudflare HTTP 530 indicates Error 1033 (dead / unregistered tunnel)
+    return res.status !== 530 && res.status !== 531;
+  } catch {
+    return false;
+  }
+}
+
+export function getTunnelUrl(): string | null {
+  if (process.env.NODE_ENV === 'test') {
+    return memoryTunnelUrl || process.env.PUBLIC_TUNNEL_URL?.trim() || process.env.TUNNEL_URL?.trim() || null;
+  }
+
+  // 1. In-memory cached URL (fastest & most up-to-date)
+  if (memoryTunnelUrl && memoryTunnelUrl.startsWith('http')) {
+    if (memoryTunnelUrl.includes('trycloudflare.com') && !isCloudflaredProcessRunning()) {
+      invalidateTunnelUrl();
+      return null;
+    }
+    return memoryTunnelUrl;
+  }
+
+  // 2. Direct environment variable
+  if (process.env.PUBLIC_TUNNEL_URL?.startsWith('http')) {
+    return process.env.PUBLIC_TUNNEL_URL.trim();
+  }
+  if (process.env.TUNNEL_URL?.startsWith('http')) {
+    return process.env.TUNNEL_URL.trim();
+  }
+
+  // If cloudflared is not running, any ephemeral quick tunnel file is dead
+  if (!isCloudflaredProcessRunning()) {
+    cleanCandidateTunnelFiles();
+    return null;
+  }
+
+  // 3. Scan candidate disk paths across Windows, macOS, and Linux
+  const candidates = getCandidateTunnelFilePaths();
   const fsMod = getRuntimeFs();
   if (!fsMod) return null;
 
@@ -78,13 +160,15 @@ export function getTunnelUrl(): string | null {
     try {
       if (fsMod.existsSync(p)) {
         const stat = fsMod.statSync(p);
-        const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
-        if (ageHours <= 24) {
+        const ageMinutes = (Date.now() - stat.mtimeMs) / (1000 * 60);
+        if (ageMinutes <= 15) {
           const content = fsMod.readFileSync(p, 'utf-8').trim();
           if (content && content.startsWith('http')) {
             memoryTunnelUrl = content;
             return content;
           }
+        } else {
+          try { fsMod.unlinkSync(p); } catch {}
         }
       }
     } catch {}
@@ -117,11 +201,14 @@ export function stopCloudflareTunnel(): void {
     } catch {}
     activeTunnelProc = null;
   }
+  isStartingTunnel = false;
+  invalidateTunnelUrl();
 }
 
 export function ensureCloudflareTunnel(): void {
   if (process.env.NODE_ENV === 'test') return;
-  if (memoryTunnelUrl || isStartingTunnel) return;
+  if (isStartingTunnel) return;
+  if (memoryTunnelUrl && isCloudflaredProcessRunning()) return;
 
   const fsMod = getRuntimeFs();
   const cpMod = getRuntimeChildProcess();
@@ -175,6 +262,12 @@ export function ensureCloudflareTunnel(): void {
 
     activeTunnelProc = proc;
 
+    const cleanupActiveTunnel = () => {
+      isStartingTunnel = false;
+      activeTunnelProc = null;
+      invalidateTunnelUrl();
+    };
+
     let buffer = '';
     const onData = (chunk: Buffer | string) => {
       buffer += chunk.toString();
@@ -185,24 +278,12 @@ export function ensureCloudflareTunnel(): void {
         isStartingTunnel = false;
         console.log('[QR/Cloudflare] Worldwide Cloudflare Tunnel active for QR codes:', url);
         if (fsMod) {
-          const candidatePaths = [
+          const writeCandidatePaths = [
             path.join(process.cwd(), '.tunnel_url'),
-            path.join(path.resolve(os.tmpdir()), '.attendly_tunnel'),
-            path.join(path.resolve(os.homedir()), '.attendly_tunnel'),
+            path.join(os.tmpdir(), '.attendly_tunnel'),
+            path.join(os.homedir(), '.attendly_tunnel'),
           ];
-          try {
-            const home = os.homedir();
-            const appData = process.platform === 'win32'
-              ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'))
-              : process.platform === 'darwin'
-              ? path.join(home, 'Library', 'Application Support')
-              : path.join(home, '.config');
-            const attendlyDir = path.join(appData, 'Attendly');
-            if (!fsMod.existsSync(attendlyDir)) fsMod.mkdirSync(attendlyDir, { recursive: true });
-            candidatePaths.push(path.join(attendlyDir, '.tunnel_url'));
-          } catch {}
-
-          for (const p of candidatePaths) {
+          for (const p of writeCandidatePaths) {
             try { fsMod.writeFileSync(p, url, 'utf-8'); } catch {}
           }
         }
@@ -211,34 +292,42 @@ export function ensureCloudflareTunnel(): void {
 
     proc.stdout?.on('data', onData);
     proc.stderr?.on('data', onData);
-    proc.on('close', () => {
-      isStartingTunnel = false;
-      activeTunnelProc = null;
-    });
+    proc.on('close', cleanupActiveTunnel);
+    proc.on('exit', cleanupActiveTunnel);
     proc.on('error', (err: Error) => {
       console.warn('[QR/Cloudflare] Could not launch cloudflared process:', err.message);
-      isStartingTunnel = false;
+      cleanupActiveTunnel();
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[QR/Cloudflare] Launch error:', msg);
     isStartingTunnel = false;
+    activeTunnelProc = null;
+    invalidateTunnelUrl();
   }
 }
 
 /**
  * Asynchronously wait up to maxWaitMs for the Cloudflare tunnel URL to finish handshaking.
  */
-export async function waitForTunnelUrl(maxWaitMs = 6000): Promise<string | null> {
+export async function waitForTunnelUrl(maxWaitMs = 4000): Promise<string | null> {
   const existing = getTunnelUrl();
-  if (existing) return existing;
+  if (existing) {
+    if (existing.includes('trycloudflare.com')) {
+      const alive = await isTunnelUrlAlive(existing, 1500);
+      if (alive) return existing;
+      invalidateTunnelUrl();
+    } else {
+      return existing;
+    }
+  }
 
   // Trigger tunnel startup if not already running
   ensureCloudflareTunnel();
 
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 250));
     const found = getTunnelUrl();
     if (found) return found;
   }
@@ -327,18 +416,18 @@ export function pickBaseUrl(forceOrigin?: string): string {
     return tunnel.replace(/\/+$/, '');
   }
 
-  // 2. Explicit public domain via APP_URL (if not local or private LAN)
+  // 2. Explicit domain or LAN IP via APP_URL (e.g. from .env) if not localhost
   const app = process.env.APP_URL?.trim();
-  if (app && !isPrivateOrLocalUrl(app)) {
+  if (app && !isLocalUrl(app)) {
     return app.replace(/\/+$/, '');
   }
 
-  // 3. If accessed from a public non-private domain, use it
-  if (forceOrigin && !isPrivateOrLocalUrl(forceOrigin)) {
+  // 3. If accessed from a non-localhost origin (e.g. LAN IP or domain), use it
+  if (forceOrigin && !isLocalUrl(forceOrigin)) {
     return forceOrigin.replace(/\/+$/, '');
   }
 
-  // 4. LAN IP fallback when offline or before tunnel connects
+  // 4. Auto-detected LAN IP fallback when offline or before tunnel connects
   const lanIp = getLocalIpAddress();
   if (lanIp) {
     const port = process.env.PORT || '3000';
