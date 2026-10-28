@@ -1,12 +1,12 @@
 # ==============================================================================
-# Attendly — Production Dockerfile
+# Attendly — Production Dockerfile with Integrated Nginx Reverse Proxy & File Host
 # Multi-stage optimized build for universal deployment (Linux, macOS, Windows)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # 1. Base Image
 # ------------------------------------------------------------------------------
-FROM node:24-alpine AS base
+FROM node:20-alpine AS base
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 
@@ -32,7 +32,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ------------------------------------------------------------------------------
-# 4. Production Runner Stage
+# 4. Production Runner Stage with Nginx Proxy & Installer Hosting
 # ------------------------------------------------------------------------------
 FROM base AS runner
 ENV NODE_ENV=production
@@ -41,6 +41,17 @@ ENV HOSTNAME="0.0.0.0"
 ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
+
+# Install Nginx reverse proxy and utility tools
+RUN apk add --no-cache nginx curl bash
+
+# Create directory structure for Nginx, runtime, and downloads
+RUN mkdir -p /var/www/downloads /etc/nginx/http.d /etc/nginx/conf.d /app/release /app/prisma
+
+# Copy Nginx proxy configuration
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY nginx/default.conf /etc/nginx/http.d/default.conf
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 
 # Copy application assets and compiled output
 COPY --from=builder /app/package.json ./package.json
@@ -51,9 +62,13 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/docker-entrypoint.sh /usr/local/bin/
 
+# Copy installers from release directory if present
+COPY release/ /app/release/
+
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-EXPOSE 3000
+# Expose HTTP (80 - Nginx proxy + Downloads), HTTPS (443), and direct Next.js (3000)
+EXPOSE 80 443 3000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npm", "start"]

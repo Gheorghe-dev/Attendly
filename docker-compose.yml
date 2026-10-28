@@ -1,3 +1,18 @@
+# ==============================================================================
+# Attendly — Docker Compose with Reverse Proxy & Installer Hosting
+# ==============================================================================
+# 1-Click Launch: docker compose up -d
+#
+# Ports Exposed:
+#   - 80: Nginx reverse proxy + direct installer file hosting + WebSocket
+#   - 443: HTTPS / SSL support
+#   - 3000: Direct Next.js application server
+#
+# Directories:
+#   - ./release: Place .exe, .dmg, .AppImage, .deb files here to host them
+#   - attendly-data: Persistent SQLite database volume
+# ==============================================================================
+
 services:
   attendly:
     build:
@@ -6,17 +21,29 @@ services:
     container_name: attendly
     restart: unless-stopped
     ports:
+      - "80:80"
+      - "443:443"
       - "3000:3000"
     environment:
       PORT: 3000
       NODE_ENV: production
       DATABASE_URL: file:./dev.db
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env before starting Docker Compose}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-attendly-secure-encryption-secret-key-32-bytes}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
       AUTH_TRUST_HOST: "true"
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost}
     volumes:
       - attendly-data:/app/prisma
+      - ./release:/var/www/downloads
+      - ./release:/app/release
+      - ./nginx/default.conf:/etc/nginx/http.d/default.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   attendly-data:

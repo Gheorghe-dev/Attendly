@@ -54,7 +54,12 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "docs:pdf": "node scripts/generate-pdf.js",
-    "shortcuts": "node scripts/create-shortcuts.js"
+    "shortcuts": "node scripts/create-shortcuts.js",
+    "sync:installers": "node scripts/sync-release-assets.js",
+    "docker:build": "docker build -t attendly .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
   },
   "build": {
     "appId": "org.attendly.desktop",

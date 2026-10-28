@@ -14,6 +14,7 @@ import {
   KeyRound,
   ShieldCheck,
   Lock,
+  Laptop,
 } from 'lucide-react';
 import { Logo } from '@/components/branding/Logo';
 import { Button } from '@/components/ui/Button';
@@ -205,13 +206,20 @@ function LoginFormContent() {
           </Button>
         </div>
 
-        <div className="flex items-center justify-center text-xs text-muted-foreground pt-2 border-t border-border">
+        <div className="flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground pt-2 border-t border-border">
           <Link
             href="/setup"
             className="hover:text-foreground hover:underline transition-colors flex items-center gap-1.5"
           >
             <ShieldCheck className="w-3.5 h-3.5 text-accent" />
             <span>First time here? Initial Account Setup</span>
+          </Link>
+          <Link
+            href="/downloads"
+            className="hover:text-foreground hover:underline transition-colors flex items-center gap-1.5 text-accent font-medium text-[11px]"
+          >
+            <Laptop className="w-3.5 h-3.5" />
+            <span>Download Desktop App (Windows / Mac / Linux)</span>
           </Link>
         </div>
       </Card>
