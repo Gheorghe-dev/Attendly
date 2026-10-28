@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Attendly — 1-Click macOS Application Installer & Launcher
-# Double-click this file in macOS Finder to install Attendly to /Applications
+# Double-click this file in macOS Finder to install Attendly and create desktop shortcut
 # ==============================================================================
 
 # Ensure standard user paths are available (Homebrew on Apple Silicon & Intel, Node, etc.)
@@ -14,6 +14,17 @@ echo "========================================================"
 echo "          ATTENDLY — 1-CLICK macOS INSTALLER            "
 echo "========================================================"
 echo ""
+
+# Function to ensure desktop shortcut
+create_mac_desktop_shortcut() {
+    local target_app="$1"
+    local desktop_link="$HOME/Desktop/Attendly"
+    if [ -d "$target_app" ]; then
+        rm -f "$desktop_link" 2>/dev/null || true
+        ln -sf "$target_app" "$desktop_link" 2>/dev/null || true
+        echo "🔗 Created Desktop shortcut: $desktop_link"
+    fi
+}
 
 # ── 1. Check if pre-built .dmg or .app is present ────────────────────────────
 DMG_FILE=""
@@ -41,9 +52,11 @@ if [ -n "$DMG_FILE" ]; then
     if [ -d "/Applications/Attendly.app" ]; then
         xattr -cr "/Applications/Attendly.app" 2>/dev/null || true
         chmod -R +x "/Applications/Attendly.app/Contents/MacOS" 2>/dev/null || true
+        create_mac_desktop_shortcut "/Applications/Attendly.app"
         echo ""
         echo "========================================================"
         echo "🎉 SUCCESS: Attendly is now installed in /Applications!"
+        echo "   Desktop shortcut created: $HOME/Desktop/Attendly"
         echo "========================================================"
         echo "Launching Attendly..."
         open "/Applications/Attendly.app"
@@ -67,9 +80,11 @@ if [ -n "$APP_BUNDLE" ]; then
     cp -R "$APP_BUNDLE" "/Applications/Attendly.app"
     xattr -cr "/Applications/Attendly.app" 2>/dev/null || true
     chmod -R +x "/Applications/Attendly.app/Contents/MacOS" 2>/dev/null || true
+    create_mac_desktop_shortcut "/Applications/Attendly.app"
     echo ""
     echo "========================================================"
     echo "🎉 SUCCESS: Attendly is now installed in /Applications!"
+    echo "   Desktop shortcut created: $HOME/Desktop/Attendly"
     echo "========================================================"
     echo "Launching Attendly..."
     open "/Applications/Attendly.app"
@@ -77,7 +92,7 @@ if [ -n "$APP_BUNDLE" ]; then
 fi
 
 # ── 2. Source-build installation mode ────────────────────────────────────────
-echo "ℹ️ Pre-built bundle not found. Building and installing from source..."
+echo "ℹ️ Pre-built bundle not found. Configuring Attendly on this Mac..."
 echo ""
 
 # Verify Node.js runtime
@@ -88,7 +103,7 @@ if ! command -v node >/dev/null 2>&1; then
         brew install node
     fi
     if ! command -v node >/dev/null 2>&1; then
-        echo "❌ Node.js is required to build and install Attendly on this Mac."
+        echo "❌ Node.js is required to run Attendly on this Mac."
         echo "👉 Opening Node.js LTS download page in your browser..."
         open "https://nodejs.org/" 2>/dev/null || true
         echo ""
@@ -106,7 +121,7 @@ echo ""
 # Configure .env file
 if [ ! -f ".env" ]; then
     echo "⚙️ [1/6] Configuring environment settings..."
-    cp .env.example .env
+    cp .env.example .env 2>/dev/null || true
 else
     echo "✅ [1/6] Environment (.env) ready."
 fi
@@ -114,7 +129,7 @@ fi
 # Install dependencies
 if [ ! -d "node_modules" ]; then
     echo "📦 [2/6] Installing dependencies (first run only)..."
-    npm install
+    npm install --no-audit
 else
     echo "✅ [2/6] Dependencies already installed."
 fi
@@ -153,39 +168,25 @@ else
     chmod +x bin/cloudflared 2>/dev/null || true
 fi
 
-# Build Next.js standalone package
-echo "⚡ [5/6] Compiling standalone production build..."
-npm run desktop:package
+# Ensure production build exists
+if [ ! -f ".next/BUILD_ID" ]; then
+    echo "⚡ [5/6] Compiling production build..."
+    npm run build
+fi
 
-# Build native macOS DMG & App bundle
-echo "📦 [6/6] Packaging native macOS installer (.dmg)..."
-npx electron-builder --mac dmg --publish never
+# Create desktop shortcut
+echo "🔗 [6/6] Generating Desktop shortcut..."
+node scripts/create-shortcuts.js 2>/dev/null || true
 
-# Install to /Applications
-APP_BUNDLE=""
-for candidate in release/mac*/Attendly.app release/Attendly.app; do
-    if [ -d "$candidate" ]; then
-        APP_BUNDLE="$candidate"
-        break
-    fi
-done
+echo ""
+echo "========================================================"
+echo "🎉 SUCCESS: Attendly has been configured on your Mac!"
+echo "   A desktop shortcut has been created on your Desktop."
+echo "========================================================"
+echo "Launching Attendly..."
 
-if [ -n "$APP_BUNDLE" ]; then
-    rm -rf "/Applications/Attendly.app"
-    cp -R "$APP_BUNDLE" "/Applications/Attendly.app"
-    xattr -cr "/Applications/Attendly.app" 2>/dev/null || true
-    chmod -R +x "/Applications/Attendly.app/Contents/MacOS" 2>/dev/null || true
-    echo ""
-    echo "========================================================"
-    echo "🎉 SUCCESS: Attendly is now installed in /Applications!"
-    echo "========================================================"
-    DMG_RESULT=$(ls release/*.dmg 2>/dev/null | head -n 1)
-    if [ -n "$DMG_RESULT" ]; then
-        echo "📦 Standalone .dmg installer created at: $DMG_RESULT"
-    fi
-    echo "Launching Attendly..."
-    open "/Applications/Attendly.app"
-else
-    echo "⚠️ Starting via Electron runtime..."
+if command -v electron >/dev/null 2>&1 || [ -f "node_modules/.bin/electron" ]; then
     npx electron .
+else
+    node scripts/start-internet.js
 fi

@@ -133,7 +133,7 @@
       "perMachine": false,
       "allowElevation": true,
       "shortcutName": "Attendly",
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "runAfterFinish": true
     },

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, Tray, nativeImage, shell, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const http = require('http');
 const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
@@ -849,8 +850,85 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 
+function ensureDesktopShortcut() {
+  try {
+    const desktopDirs = [];
+    const homeDir = os.homedir();
+    const standardDesktop = path.join(homeDir, 'Desktop');
+    if (fs.existsSync(standardDesktop)) desktopDirs.push(standardDesktop);
+    const oneDriveDesktop = path.join(homeDir, 'OneDrive', 'Desktop');
+    if (fs.existsSync(oneDriveDesktop)) desktopDirs.push(oneDriveDesktop);
+
+    if (process.platform === 'win32') {
+      const exePath = process.execPath;
+      if (!exePath || (exePath.toLowerCase().endsWith('electron.exe') && !app.isPackaged)) {
+        return;
+      }
+
+      for (const d of desktopDirs) {
+        const sc = path.join(d, 'Attendly.lnk');
+        if (!fs.existsSync(sc)) {
+          const tempVbs = path.join(os.tmpdir(), `attendly_sc_${Date.now()}.vbs`);
+          const vbs = [
+            'Set WshShell = CreateObject("WScript.Shell")',
+            `Set sc = WshShell.CreateShortcut("${sc.replace(/"/g, '""')}")`,
+            `sc.TargetPath = "${exePath.replace(/"/g, '""')}"`,
+            `sc.WorkingDirectory = "${path.dirname(exePath).replace(/"/g, '""')}"`,
+            'sc.Description = "Attendly - Academic Attendance Platform"',
+            `sc.IconLocation = "${exePath.replace(/"/g, '""')},0"`,
+            'sc.Save',
+          ].join('\r\n');
+          fs.writeFileSync(tempVbs, vbs, 'utf-8');
+          try {
+            execSync(`cscript //nologo "${tempVbs}"`, { windowsHide: true, stdio: 'ignore' });
+          } catch {}
+          try { fs.unlinkSync(tempVbs); } catch {}
+        }
+      }
+    } else if (process.platform === 'darwin') {
+      for (const d of desktopDirs) {
+        const sc = path.join(d, 'Attendly');
+        if (!fs.existsSync(sc) && fs.existsSync('/Applications/Attendly.app')) {
+          try { fs.symlinkSync('/Applications/Attendly.app', sc); } catch {}
+        }
+      }
+    } else if (process.platform === 'linux') {
+      for (const d of desktopDirs) {
+        const sc = path.join(d, 'Attendly.desktop');
+        if (!fs.existsSync(sc)) {
+          const entry = [
+            '[Desktop Entry]',
+            'Type=Application',
+            'Name=Attendly',
+            'Comment=Attendly - Academic Attendance Platform',
+            `Exec="${process.execPath}"`,
+            'Terminal=false',
+            'Categories=Education;',
+          ].join('\n');
+          try {
+            fs.writeFileSync(sc, entry, { mode: 0o755 });
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+}
+
+function ensureWindowsFirewall() {
+  if (process.platform !== 'win32') return;
+  try {
+    exec(
+      'netsh advfirewall firewall show rule name="Attendly Port 3000" >nul 2>&1 || netsh advfirewall firewall add rule name="Attendly Port 3000" dir=in action=allow protocol=TCP localport=3000 profile=any >nul 2>&1',
+      { windowsHide: true },
+      () => {}
+    );
+  } catch {}
+}
+
 // App Lifecycle
 app.whenReady().then(async () => {
+  ensureDesktopShortcut();
+  ensureWindowsFirewall();
   // Dynamically resolve an open usable port if default 3000 is occupied
   PORT = await resolveUsablePort(PORT);
   SERVER_URL = `http://127.0.0.1:${PORT}`;
