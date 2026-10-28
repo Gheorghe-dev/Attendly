@@ -8,6 +8,17 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+      child_process: false,
+    };
+    return config;
+  },
+
   // Production security & permissions headers
   async headers() {
     return [

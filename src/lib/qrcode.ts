@@ -25,6 +25,9 @@ export function setMemoryTunnelUrl(url: string | null) {
 }
 
 export function getCandidateTunnelFilePaths(): string[] {
+  if (typeof window !== 'undefined' || process.env.NEXT_PHASE?.includes('build') || process.env.CI) {
+    return [];
+  }
   const candidates: string[] = [
     path.join(process.cwd(), '.tunnel_url'),
     path.join(process.cwd(), '..', '.tunnel_url'),
@@ -40,9 +43,7 @@ export function getCandidateTunnelFilePaths(): string[] {
 
     if (process.platform === 'win32') {
       const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-      const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
       candidates.push(path.join(appData, 'Attendly', '.tunnel_url'));
-      candidates.push(path.join(localAppData, 'Attendly', '.tunnel_url'));
     } else if (process.platform === 'darwin') {
       candidates.push(path.join(home, 'Library', 'Application Support', 'Attendly', '.tunnel_url'));
     } else {
