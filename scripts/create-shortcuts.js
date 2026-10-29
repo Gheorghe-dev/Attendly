@@ -28,22 +28,45 @@ for (const dir of [desktopDir, rootDir]) {
   }
 }
 
+// Detect native Attendly.exe executable for direct, zero-CMD launching with loading screen
+const candidateExes = [
+  path.join(rootDir, 'release', 'win-unpacked', 'Attendly.exe'),
+  path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Attendly', 'Attendly.exe'),
+];
+
+let nativeExe = null;
+let newestTime = 0;
+for (const exe of candidateExes) {
+  if (fs.existsSync(exe)) {
+    const mtime = fs.statSync(exe).mtimeMs;
+    if (mtime > newestTime) {
+      newestTime = mtime;
+      nativeExe = exe;
+    }
+  }
+}
+
+const vbsLauncher = path.join(rootDir, 'Attendly.vbs');
+const launchTarget = nativeExe || vbsLauncher;
+const launchArgs = '';
+const launchIcon = nativeExe ? `${nativeExe},0` : `${iconPath},0`;
+
 // Generate Attendly Desktop Shortcuts
 const tempVbs = path.join(os.tmpdir(), `create_attendly_shortcut_${Date.now()}.vbs`);
 const vbsLines = [
   'Set WshShell = CreateObject("WScript.Shell")',
-  `CreateSc "${path.join(desktopDir, 'Attendly.lnk')}", "${startScript}", "Launch Attendly Container Server with Cloudflare"`,
-  `CreateSc "${path.join(desktopDir, 'Stop Attendly.lnk')}", "${stopScript}", "Stop Attendly Container Server"`,
-  `CreateSc "${path.join(rootDir, 'Attendly.lnk')}", "${startScript}", "Launch Attendly Container Server with Cloudflare"`,
-  `CreateSc "${path.join(rootDir, 'Stop Attendly.lnk')}", "${stopScript}", "Stop Attendly Container Server"`,
+  `CreateSc "${path.join(desktopDir, 'Attendly.lnk')}", "${launchTarget}", "${launchArgs}", "Launch Attendly", "${launchIcon}"`,
+  `CreateSc "${path.join(desktopDir, 'Stop Attendly.lnk')}", "${stopScript}", "", "Stop Attendly Container Server", "${iconPath},0"`,
+  `CreateSc "${path.join(rootDir, 'Attendly.lnk')}", "${launchTarget}", "${launchArgs}", "Launch Attendly", "${launchIcon}"`,
+  `CreateSc "${path.join(rootDir, 'Stop Attendly.lnk')}", "${stopScript}", "", "Stop Attendly Container Server", "${iconPath},0"`,
   '',
-  'Sub CreateSc(scPath, targetPath, desc)',
+  'Sub CreateSc(scPath, targetPath, args, desc, icon)',
   '  Set sc = WshShell.CreateShortcut(scPath)',
   '  sc.TargetPath = targetPath',
-  '  sc.Arguments = ""',
+  '  sc.Arguments = args',
   `  sc.WorkingDirectory = "${rootDir}"`,
   '  sc.Description = desc',
-  `  sc.IconLocation = "${iconPath},0"`,
+  '  sc.IconLocation = icon',
   '  sc.Save',
   'End Sub',
 ];

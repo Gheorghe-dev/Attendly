@@ -24,7 +24,7 @@ services:
       CLOUDFLARE_TUNNEL_ACTIVE: "true"
       CLOUDFLARE_TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     volumes:
-      - attendly-data:/app/prisma
+      - ./prisma:/app/prisma
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
       interval: 10s

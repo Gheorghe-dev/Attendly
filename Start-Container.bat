@@ -4,6 +4,16 @@ cd /d "%~dp0"
 title Attendly Container Server with Cloudflare
 color 0A
 
+:: If native Attendly desktop app exists, launch it directly with zero CMD and immediate loading screen
+if exist "%LOCALAPPDATA%\Programs\Attendly\Attendly.exe" (
+    start "" "%LOCALAPPDATA%\Programs\Attendly\Attendly.exe"
+    exit /b 0
+)
+if exist "%~dp0release\win-unpacked\Attendly.exe" (
+    start "" "%~dp0release\win-unpacked\Attendly.exe"
+    exit /b 0
+)
+
 :: Prefer PowerShell lifecycle manager for native frameless app window and automated stop on window close
 where powershell >nul 2>&1
 if %errorlevel% equ 0 (

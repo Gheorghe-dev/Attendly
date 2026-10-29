@@ -91,14 +91,14 @@
 <body>
   <div class="container">
     <div class="logo-badge">
-      <img src="../public/emblem.png" alt="Attendly" onerror="this.style.display='none'; this.parentElement.innerText='🎓';" />
+      <img src="emblem.png" alt="Attendly" onerror="this.src='../public/emblem.png'; this.onerror=function(){ this.style.display='none'; this.parentElement.innerText='🎓'; };" />
     </div>
     <h1>Attendly</h1>
     <p>Desktop Edition · Initializing server & security engine</p>
     <div class="progress-bar">
       <div class="progress-bar-fill"></div>
     </div>
-    <div id="status" class="status-text">Starting server on port 3000…</div>
+    <div id="status" class="status-text">Starting Attendly…</div>
   </div>
   <script>
     const { ipcRenderer } = require('electron');

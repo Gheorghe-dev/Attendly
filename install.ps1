@@ -400,12 +400,21 @@ try {
     $wsh = New-Object -ComObject WScript.Shell
     $iconPath = Join-Path $ScriptDir "attendly.ico"
 
-    # Start shortcut on Desktop
+    # Resolve native Attendly.exe or silent VBS launcher (zero CMD window, direct loading screen)
+    $candidateExes = @(
+        (Join-Path $ScriptDir "release\win-unpacked\Attendly.exe"),
+        "$env:LOCALAPPDATA\Programs\Attendly\Attendly.exe"
+    )
+    $nativeExe = $candidateExes | Where-Object { Test-Path $_ } | Sort-Object { (Get-Item $_).LastWriteTime } -Descending | Select-Object -First 1
+    $launchTarget = if ($nativeExe) { $nativeExe } else { Join-Path $ScriptDir "Attendly.vbs" }
+    $launchIcon = if ($nativeExe) { "$nativeExe,0" } else { if (Test-Path $iconPath) { $iconPath } else { "" } }
+
+    # Start shortcut on Desktop (Launches Attendly directly with loading screen, NO CMD)
     $scDesk = $wsh.CreateShortcut((Join-Path $desktopPath "Attendly.lnk"))
-    $scDesk.TargetPath = (Join-Path $ScriptDir "Start-Container.bat")
+    $scDesk.TargetPath = $launchTarget
     $scDesk.WorkingDirectory = $ScriptDir
-    $scDesk.Description = "Launch Attendly Container Server with Cloudflare"
-    if (Test-Path $iconPath) { $scDesk.IconLocation = $iconPath }
+    $scDesk.Description = "Launch Attendly"
+    if ($launchIcon) { $scDesk.IconLocation = $launchIcon }
     $scDesk.Save()
 
     # Stop shortcut on Desktop
@@ -419,10 +428,10 @@ try {
     # Start Menu shortcut
     if (Test-Path $programsPath) {
         $scMenu = $wsh.CreateShortcut((Join-Path $programsPath "Attendly.lnk"))
-        $scMenu.TargetPath = (Join-Path $ScriptDir "Start-Container.bat")
+        $scMenu.TargetPath = $launchTarget
         $scMenu.WorkingDirectory = $ScriptDir
         $scMenu.Description = "Attendly Academic Attendance System"
-        if (Test-Path $iconPath) { $scMenu.IconLocation = $iconPath }
+        if ($launchIcon) { $scMenu.IconLocation = $launchIcon }
         $scMenu.Save()
     }
     Write-Host "      Created Desktop shortcut: 'Attendly' (1-click start & browser launch)" -ForegroundColor Green

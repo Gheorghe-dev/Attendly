@@ -47,6 +47,25 @@ function getDatabaseUrl() {
     try { fs.mkdirSync(userData, { recursive: true }); } catch {}
   }
   const targetDb = path.join(userData, 'attendly.db');
+  const repoDb = path.join(ROOT_DIR, 'prisma', 'dev.db');
+
+  // If running in development / repo workspace, sync between repo dev.db and userData attendly.db
+  if (fs.existsSync(repoDb) && !app.isPackaged) {
+    try {
+      if (fs.existsSync(targetDb)) {
+        const repoStat = fs.statSync(repoDb);
+        const userStat = fs.statSync(targetDb);
+        if (userStat.mtimeMs > repoStat.mtimeMs && userStat.size > 4096) {
+          fs.copyFileSync(targetDb, repoDb);
+        } else if (repoStat.size > 4096) {
+          fs.copyFileSync(repoDb, targetDb);
+        }
+      } else {
+        fs.copyFileSync(repoDb, targetDb);
+      }
+    } catch {}
+    return `file:${repoDb.replace(/\\/g, '/')}`;
+  }
 
   // Check if database does not exist OR is empty / corrupted (less than 4KB)
   let needSeed = !fs.existsSync(targetDb);
@@ -139,17 +158,33 @@ function checkServerReady(portOrTimeout, timeoutMs = 1500) {
 function freePort(port = PORT) {
   return new Promise((resolve) => {
     try {
-      const execOpts = { cwd: getUserDataDir(), windowsHide: true };
       if (process.platform === 'win32') {
-        exec(
-          `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"`,
-          execOpts,
-          () => resolve()
+        const proc = spawn(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-WindowStyle',
+            'Hidden',
+            '-Command',
+            `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
+          ],
+          {
+            windowsHide: true,
+            shell: false,
+            stdio: 'ignore',
+          }
         );
+        proc.on('close', () => resolve());
+        proc.on('error', () => resolve());
+        setTimeout(() => {
+          try { proc.kill(); } catch {}
+          resolve();
+        }, 1500);
       } else {
         exec(
           `lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1 || fuser -k ${port}/tcp >/dev/null 2>&1 || true`,
-          execOpts,
+          { windowsHide: true },
           () => resolve()
         );
       }
@@ -172,17 +207,21 @@ function isPortAvailable(port) {
 
 async function resolveUsablePort(preferredPort = 3000) {
   // If Attendly is already responding on preferredPort, keep it
-  const isRunning = await checkServerReady(preferredPort, 600);
+  const isRunning = await checkServerReady(preferredPort, 400);
   if (isRunning) return preferredPort;
 
-  // Try freeing the preferred port
-  await freePort(preferredPort);
+  // Check if preferred port is already available before trying to free anything
   const available = await isPortAvailable(preferredPort);
   if (available) return preferredPort;
 
+  // Only try freeing if preferred port is actually occupied
+  await freePort(preferredPort);
+  const nowAvailable = await isPortAvailable(preferredPort);
+  if (nowAvailable) return preferredPort;
+
   // Search next available ports if preferred port remains blocked
   for (let p = preferredPort + 1; p <= preferredPort + 20; p++) {
-    const pRunning = await checkServerReady(p, 400);
+    const pRunning = await checkServerReady(p, 300);
     if (pRunning) return p;
     const isAvail = await isPortAvailable(p);
     if (isAvail) {
@@ -286,9 +325,7 @@ async function startServer() {
   proc.stdout?.on('data', (d) => {
     const msg = d.toString();
     if (msg.includes('Ready') || msg.includes('Local:') || msg.includes('✓')) {
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.webContents.send('status-update', 'Server is ready! Loading dashboard…');
-      }
+      sendSplashStatus('Server is ready! Loading dashboard…');
     }
   });
 
@@ -539,6 +576,23 @@ function createSplashWindow() {
   splashWindow.on('closed', () => {
     splashWindow = null;
   });
+}
+
+function sendSplashStatus(message) {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  if (splashWindow.webContents.isLoading()) {
+    splashWindow.webContents.once('did-finish-load', () => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        try {
+          splashWindow.webContents.send('status-update', message);
+        } catch {}
+      }
+    });
+  } else {
+    try {
+      splashWindow.webContents.send('status-update', message);
+    } catch {}
+  }
 }
 
 function createMainWindow() {
@@ -852,19 +906,29 @@ ipcMain.on('window-close', () => mainWindow?.close());
 // Docker Lifecycle
 let startedDockerCompose = false;
 
+function isDockerEngineRunning() {
+  try {
+    execSync('docker info', { stdio: 'ignore', timeout: 1200, windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ensureDockerCompose() {
   const composePath = path.join(ROOT_DIR, 'docker-compose.yml');
   if (!fs.existsSync(composePath)) return false;
 
-  try {
-    execSync('docker --version', { stdio: 'ignore', timeout: 3000 });
-  } catch {
+  // Fast non-blocking check: if Docker daemon is not active, do not hang or fail
+  if (!isDockerEngineRunning()) {
+    console.log('[Electron] Docker Engine is not currently running. Using built-in local engine.');
     return false;
   }
 
   try {
-    console.log('[Electron] Ensuring Docker Compose containers are running...');
-    execSync('docker compose up -d', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 45000 });
+    console.log('[Electron] Docker Engine detected. Ensuring containers are running...');
+    sendSplashStatus('Connecting container services…');
+    execSync('docker compose up -d', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 10000, windowsHide: true });
     startedDockerCompose = true;
     return true;
   } catch (err) {
@@ -877,7 +941,7 @@ function stopDockerCompose() {
   if (startedDockerCompose) {
     try {
       console.log('[Electron] Stopping Docker Compose containers on exit...');
-      execSync('docker compose down', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 25000 });
+      execSync('docker compose down', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 8000, windowsHide: true });
       startedDockerCompose = false;
     } catch (err) {
       console.warn('[Electron] Error stopping Docker Compose:', err.message);
@@ -887,72 +951,60 @@ function stopDockerCompose() {
 
 // App Lifecycle
 app.whenReady().then(async () => {
-  ensureDockerCompose();
-  // Dynamically resolve an open usable port if default 3000 is occupied
-  PORT = await resolveUsablePort(PORT);
-  SERVER_URL = `http://127.0.0.1:${PORT}`;
+  // 1. Show Attendly splash loading screen IMMEDIATELY (<50ms) with zero CMD!
+  createSplashWindow();
+  sendSplashStatus('Starting Attendly…');
+
+  buildNativeMenu();
+  setupTray();
 
   // Allow geolocation and essential web permissions on PC without blocking
   if (session && session.defaultSession) {
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
       callback(true);
     });
-    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-      return true;
-    });
+    session.defaultSession.setPermissionCheckHandler(() => true);
   }
 
-  createSplashWindow();
-  buildNativeMenu();
-  setupTray();
+  // 2. Fast non-blocking Docker check
+  ensureDockerCompose();
 
-  // Check if server is already responding
-  const isAlreadyReady = await checkServerReady(800);
+  // 3. Dynamically resolve an open usable port
+  PORT = await resolveUsablePort(PORT);
+  SERVER_URL = `http://127.0.0.1:${PORT}`;
+
+  // 4. Check if server is already responding
+  const isAlreadyReady = await checkServerReady(500);
   if (!isAlreadyReady) {
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.webContents.send('status-update', 'Checking server status…');
-    }
+    sendSplashStatus('Initializing local engine…');
     serverProcess = await startServer();
 
     // Poll until Next.js is responding
     let ready = false;
     for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 500));
       ready = await checkServerReady();
       if (ready) break;
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.webContents.send('status-update', `Connecting to local engine (${i + 1}s)…`);
-      }
+      sendSplashStatus(`Connecting to local engine (${i + 1}s)…`);
     }
   } else {
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.webContents.send('status-update', 'Local engine connected! Initializing worldwide tunnel…');
-    }
+    sendSplashStatus('Local engine connected! Initializing worldwide tunnel…');
   }
 
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send('status-update', 'Starting Cloudflare worldwide link for any Wi-Fi…');
-  }
+  // 5. Cloudflare Worldwide Tunnel
+  sendSplashStatus('Starting Cloudflare worldwide link for any Wi-Fi…');
   tunnelProcess = startCloudflareTunnel();
 
-  // Allow up to 14 seconds for Worldwide Tunnel to connect before opening main window
-  for (let j = 0; j < 28; j++) {
+  // Allow up to 10 seconds for Worldwide Tunnel to connect before opening main window
+  for (let j = 0; j < 20; j++) {
     if (tunnelUrl) break;
     await new Promise((r) => setTimeout(r, 500));
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.webContents.send(
-        'status-update',
-        `Connecting Cloudflare worldwide link (${Math.round((j + 1) * 0.5)}s)…`
-      );
-    }
+    sendSplashStatus(`Connecting Cloudflare worldwide link (${Math.round((j + 1) * 0.5)}s)…`);
   }
 
-  if (splashWindow && !splashWindow.isDestroyed()) {
-    splashWindow.webContents.send(
-      'status-update',
-      tunnelUrl ? 'Cloudflare worldwide link active! Loading Attendly…' : 'Ready! Loading Attendly…'
-    );
-  }
+  sendSplashStatus(
+    tunnelUrl ? 'Cloudflare worldwide link active! Loading Attendly…' : 'Ready! Loading Attendly…'
+  );
 
   createMainWindow();
 
