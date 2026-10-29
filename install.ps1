@@ -49,9 +49,25 @@ $osName = (Get-CimInstance Win32_OperatingSystem).Caption
 Write-Host "[1/8] Detected Operating System: $osName ($arch)" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 3. Docker Verification and Fully Automated Setup
+# 3. Docker & Runtime Verification and Fully Automated Setup
 # ------------------------------------------------------------------------------
-Write-Host "[2/8] Checking Docker environment..." -ForegroundColor Cyan
+Write-Host "[2/8] Checking Docker and system runtime prerequisites..." -ForegroundColor Cyan
+
+# Check if Docker binaries exist in standard directories but not in session PATH
+$dockerBinCandidates = @(
+    "$env:LOCALAPPDATA\Programs\DockerDesktop\resources\bin",
+    "$env:LOCALAPPDATA\Programs\DockerDesktop\resources",
+    "$env:ProgramFiles\Docker\Docker\resources\bin",
+    "$env:ProgramFiles\Docker\Docker\resources",
+    "$env:LOCALAPPDATA\Programs\Docker\Docker\resources\bin"
+)
+foreach ($bin in $dockerBinCandidates) {
+    if (Test-Path (Join-Path $bin "docker.exe")) {
+        if ($env:Path -notlike "*$bin*") {
+            $env:Path = "$bin;" + $env:Path
+        }
+    }
+}
 
 function Test-DockerWorking {
     try {
@@ -62,9 +78,21 @@ function Test-DockerWorking {
     }
 }
 
+# Auto-install Docker Desktop if missing
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host "[!] Docker CLI was not found on your system." -ForegroundColor Yellow
+    Write-Host "[!] Docker CLI was not found on your system. Installing Docker Desktop..." -ForegroundColor Yellow
     
+    # 1. Enable WSL 2 & Virtual Machine Platform features if needed
+    if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
+        Write-Host "[*] Enabling Windows Subsystem for Linux (WSL) and Virtual Machine Platform..." -ForegroundColor Cyan
+        try {
+            dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart | Out-Null
+            dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart | Out-Null
+        } catch {}
+    } else {
+        try { wsl --set-default-version 2 2>$null } catch {}
+    }
+
     $installed = $false
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Write-Host "[*] Installing Docker Desktop via Windows Package Manager (winget)..." -ForegroundColor Cyan
@@ -84,7 +112,7 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
             Write-Host "[*] Running silent installation of Docker Desktop..." -ForegroundColor Cyan
-            $proc = Start-Process -FilePath $installerPath -ArgumentList "install --quiet --accept-license" -Wait -PassThru
+            $proc = Start-Process -FilePath $installerPath -ArgumentList "install --quiet --accept-license --backend=wsl-2" -Wait -PassThru
             if ($proc.ExitCode -eq 0) { $installed = $true }
             Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
         } catch {
@@ -94,29 +122,91 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 
     # Refresh PATH environment variable in current session
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    foreach ($bin in $dockerBinCandidates) {
+        if (Test-Path (Join-Path $bin "docker.exe")) {
+            if ($env:Path -notlike "*$bin*") { $env:Path = "$bin;" + $env:Path }
+        }
+    }
+}
+
+# Auto-install Node.js LTS if missing (ensures any auxiliary scripts work out of the box)
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "[*] Node.js runtime not detected. Installing Node.js LTS..." -ForegroundColor Cyan
+    $nodeInstalled = $false
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        try {
+            winget install OpenJS.NodeJS.LTS -e --silent --accept-source-agreements --accept-package-agreements
+            if ($LASTEXITCODE -eq 0) { $nodeInstalled = $true }
+        } catch {}
+    }
+    if (-not $nodeInstalled) {
+        try {
+            $nodeUrl = "https://nodejs.org/dist/v20.18.0/node-v20.18.0-x64.msi"
+            $nodeMsi = Join-Path $env:TEMP "node-installer.msi"
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeMsi -UseBasicParsing
+            Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$nodeMsi`" /qn /norestart" -Wait
+            Remove-Item $nodeMsi -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+    $nodeDirs = @("$env:ProgramFiles\nodejs", "$env:APPDATA\npm")
+    foreach ($nd in $nodeDirs) {
+        if (Test-Path $nd) { $env:Path = "$nd;" + $env:Path }
+    }
 }
 
 if (-not (Test-DockerWorking)) {
     Write-Host "[*] Starting Docker Desktop daemon..." -ForegroundColor Yellow
     
-    $dockerExePath = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
-    if (-not (Test-Path $dockerExePath)) {
-        $dockerExePath = "$env:LocalAppData\Programs\Docker\Docker\Docker Desktop.exe"
+    $dockerPaths = @(
+        "$env:LOCALAPPDATA\Programs\DockerDesktop\Docker Desktop.exe",
+        "$env:LOCALAPPDATA\Programs\DockerDesktop\resources\com.docker.backend.exe",
+        "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+        "$env:ProgramFiles\Docker\Docker\resources\com.docker.backend.exe",
+        "$env:LOCALAPPDATA\Programs\Docker\Docker\Docker Desktop.exe"
+    )
+    if (Get-Command docker -ErrorAction SilentlyContinue) {
+        try {
+            $binDir = Split-Path (Get-Command docker).Source -Parent
+            $candidate = Join-Path (Split-Path (Split-Path $binDir -Parent) -Parent) "Docker Desktop.exe"
+            if (Test-Path $candidate) { $dockerPaths = @($candidate) + $dockerPaths }
+        } catch {}
     }
-    
-    if (Test-Path $dockerExePath) {
-        Start-Process $dockerExePath
-    } else {
+
+    $started = $false
+    foreach ($p in $dockerPaths) {
+        if (Test-Path $p) {
+            Start-Process $p
+            $started = $true
+            break
+        }
+    }
+
+    if (-not $started) {
         Write-Host "[*] Please start Docker Desktop from your Start Menu." -ForegroundColor Yellow
     }
 
     Write-Host "[*] Waiting for Docker engine to initialize (up to 90 seconds)..." -NoNewline
     $timeout = 90
     $elapsed = 0
+    $backendStarted = $false
     while ((-not (Test-DockerWorking)) -and ($elapsed -lt $timeout)) {
         Start-Sleep -Seconds 3
         $elapsed += 3
         Write-Host "." -NoNewline
+        if ($elapsed -ge 12 -and -not $backendStarted) {
+            $backendCandidates = @(
+                "$env:LOCALAPPDATA\Programs\DockerDesktop\resources\com.docker.backend.exe",
+                "$env:ProgramFiles\Docker\Docker\resources\com.docker.backend.exe"
+            )
+            foreach ($b in $backendCandidates) {
+                if (Test-Path $b) {
+                    Start-Process -FilePath $b -WindowStyle Hidden -ErrorAction SilentlyContinue
+                    $backendStarted = $true
+                    break
+                }
+            }
+        }
     }
     Write-Host ""
 

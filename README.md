@@ -160,7 +160,27 @@ To stop Attendly at any time:
 
 Run Attendly inside an isolated local container server with an integrated Cloudflare worldwide tunnel and Nginx reverse proxy. This ensures your app does not run bare-metal on localhost and is accessible to any phone or laptop worldwide.
 
+#### 🌟 Fully Automated 1-Command Installers (Installs Everything Needed):
+If you are setting up on a new PC and don't have Docker or other tools installed, the installers will automatically install **everything** for you:
+- **Windows**: Double-click **`install.bat`** (or run `install.ps1`).
+  - Auto-enables WSL 2 & Virtual Machine Platform.
+  - Auto-installs Docker Desktop (via `winget` or direct official installer).
+  - Auto-installs Node.js LTS if missing.
+  - Configures Windows Defender Firewall rules.
+  - Generates secure `.env` secrets and builds the containers.
+  - Creates Desktop (`Attendly.lnk` & `Stop Attendly.lnk`) and Start Menu shortcuts.
+  - Connects the Cloudflare worldwide tunnel and opens Attendly.
+- **macOS**: Double-click **`Install-Attendly-Mac.command`** or run **`./install-mac.sh`**.
+  - Auto-installs Docker Desktop (Apple Silicon `arm64` or Intel `x86_64` via Homebrew or direct official DMG).
+  - Auto-installs Node.js LTS.
+  - Generates `.env`, builds containers, and creates Desktop launchers.
+- **Linux**: Run **`./install-linux.sh`**.
+  - Auto-installs `curl`, official Docker Engine, `docker-compose-plugin`, and Node.js LTS.
+  - Configures `ufw` or `firewalld` rules.
+  - Builds containers and installs Desktop menu shortcuts.
+
 #### 1-Click Launchers (Automated Docker Lifecycle):
+Once installed, everyday use is as simple as 1 click:
 - **Windows**: Double-click **`Attendly.lnk`** on Desktop or run **`Start-Container.bat`**
 - **macOS / Linux**: Double-click **`Attendly.command`** or run **`./start-container.sh`**
 

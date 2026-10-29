@@ -27,27 +27,43 @@ fi
 echo "🐧 [1/8] Detected Operating System: $DISTRO ($ARCH)"
 
 # ------------------------------------------------------------------------------
-# 2. Docker Engine & Compose Verification / Auto-Install
+# 2. Docker Engine & Runtime Verification / Fully Automated Setup
 # ------------------------------------------------------------------------------
-echo "🐳 [2/8] Checking Docker environment..."
+echo "🐳 [2/8] Checking Docker and system prerequisites..."
+
+# Ensure core package download utilities are installed
+if ! command -v curl >/dev/null 2>&1; then
+    echo "📦 Installing curl and certificates..."
+    sudo apt-get update -y && sudo apt-get install -y curl ca-certificates 2>/dev/null || \
+    sudo dnf install -y curl ca-certificates 2>/dev/null || \
+    sudo yum install -y curl ca-certificates 2>/dev/null || \
+    sudo pacman -Sy --noconfirm curl ca-certificates 2>/dev/null || true
+fi
 
 test_docker() {
     docker info >/dev/null 2>&1
 }
 
 if ! command -v docker >/dev/null 2>&1; then
-    echo "⚠️  Docker Engine is not installed."
-    echo "📦 Installing official Docker Engine via get.docker.com..."
+    echo "⚠️  Docker Engine is not installed. Installing Docker automatically..."
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
         sudo sh /tmp/get-docker.sh
         rm -f /tmp/get-docker.sh
-    else
-        echo "❌ Please install curl or Docker manually and re-run this script."
-        exit 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- https://get.docker.com | sudo sh
     fi
-    sudo systemctl enable --now docker || sudo service docker start || true
+    sudo systemctl enable --now docker 2>/dev/null || sudo service docker start 2>/dev/null || true
     sudo usermod -aG docker "$USER" 2>/dev/null || true
+fi
+
+# Auto-install Node.js if missing
+if ! command -v node >/dev/null 2>&1; then
+    echo "📦 Installing Node.js LTS..."
+    sudo apt-get update -y && sudo apt-get install -y nodejs npm 2>/dev/null || \
+    sudo dnf install -y nodejs npm 2>/dev/null || \
+    sudo yum install -y nodejs npm 2>/dev/null || \
+    sudo pacman -Sy --noconfirm nodejs npm 2>/dev/null || true
 fi
 
 if ! test_docker; then
@@ -70,7 +86,8 @@ if ! docker compose version >/dev/null 2>&1; then
     else
         echo "📦 Installing Docker Compose plugin..."
         sudo apt-get update -y && sudo apt-get install -y docker-compose-plugin 2>/dev/null || \
-        sudo dnf install -y docker-compose-plugin 2>/dev/null || true
+        sudo dnf install -y docker-compose-plugin 2>/dev/null || \
+        sudo yum install -y docker-compose-plugin 2>/dev/null || true
     fi
 fi
 

@@ -31,8 +31,13 @@ test_docker() {
     docker info >/dev/null 2>&1
 }
 
+# Check if Docker binaries are in Applications but not yet in PATH
+if [ -d "/Applications/Docker.app/Contents/Resources/bin" ]; then
+    export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
-    echo "⚠️  Docker is not installed on this Mac."
+    echo "⚠️  Docker is not installed on this Mac. Installing Docker Desktop automatically..."
     if command -v brew >/dev/null 2>&1; then
         echo "🍺 Installing Docker Desktop via Homebrew..."
         brew install --cask docker
@@ -44,13 +49,29 @@ if ! command -v docker >/dev/null 2>&1; then
         else
             DMG_URL="https://desktop.docker.com/mac/main/amd64/Docker.dmg"
         fi
-        curl -L -o /tmp/Docker.dmg "$DMG_URL"
+        curl -fsSL -o /tmp/Docker.dmg "$DMG_URL"
         echo "📦 Installing Docker Desktop to /Applications..."
         hdiutil attach /tmp/Docker.dmg -nobrowse -quiet
         cp -R /Volumes/Docker/Docker.app /Applications 2>/dev/null || true
         hdiutil detach /Volumes/Docker -quiet || true
         rm -f /tmp/Docker.dmg
         open -a Docker || true
+    fi
+    export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
+fi
+
+# Auto-install Node.js if missing
+if ! command -v node >/dev/null 2>&1; then
+    echo "📦 Node.js not detected. Installing Node.js LTS..."
+    if command -v brew >/dev/null 2>&1; then
+        brew install node || true
+    else
+        NODE_PKG_URL="https://nodejs.org/dist/v20.18.0/node-v20.18.0.pkg"
+        curl -fsSL -o /tmp/node.pkg "$NODE_PKG_URL" || true
+        if [ -f /tmp/node.pkg ]; then
+            sudo installer -pkg /tmp/node.pkg -target / 2>/dev/null || installer -pkg /tmp/node.pkg -target CurrentUserHomeDirectory 2>/dev/null || true
+            rm -f /tmp/node.pkg
+        fi
     fi
 fi
 
