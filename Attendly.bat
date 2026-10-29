@@ -1,76 +1,46 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 cd /d "%~dp0"
 title Attendly Desktop
 
-REM 1. If installed standalone native executable exists, launch it directly!
-for %%I in (
-    "%LOCALAPPDATA%\Programs\attendly\Attendly.exe"
-    "%LOCALAPPDATA%\Programs\Attendly\Attendly.exe"
-    "%ProgramFiles%\Attendly\Attendly.exe"
-    "%ProgramFiles(x86)%\Attendly\Attendly.exe"
-    "%~dp0release\win-unpacked\Attendly.exe"
-) do (
-    if exist "%%~fI" (
-        start "" "%%~fI"
-        exit /b 0
-    )
-)
+powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue" >nul 2>&1
 
-REM 2. Unblock bundled Cloudflare tunnel binary if present
-if exist "bin\cloudflared.exe" (
-    powershell -NoProfile -Command "Unblock-File -Path '%~dp0bin\cloudflared.exe' -ErrorAction SilentlyContinue" >nul 2>&1
-)
-
-REM 3. Verify Node.js runtime
 where node >nul 2>&1
 if %errorLevel% neq 0 (
-    powershell -NoProfile -Command "[System.Windows.Forms.MessageBox]::Show('Node.js is required to start Attendly. Opening nodejs.org download page...', 'Attendly Desktop', 0, 48); Start-Process 'https://nodejs.org/'" >nul 2>&1
+    echo [ERROR] Node.js is required. Download from https://nodejs.org/
+    pause
     exit /b 1
 )
 
-REM 4. Ensure environment settings (.env) exist
 if not exist ".env" (
-    if exist ".env.example" (
-        copy ".env.example" ".env" >nul
-    )
+    copy ".env.example" ".env" >nul
 )
 
-REM 5. Ensure application dependencies are installed
 if not exist "node_modules\" (
-    call npm install --no-audit
+    echo [Attendly] Installing application dependencies...
+    call npm install
 )
 
-REM 6. Ensure local database is initialized with template
 if not exist "prisma\dev.db" (
+    echo [Attendly] Initializing database...
     if exist "prisma\template.db" (
         copy "prisma\template.db" "prisma\dev.db" >nul
     ) else (
-        call npx prisma db push --skip-generate
+        call npx prisma db push
     )
 )
 
-REM 7. Generate Prisma Client
-call npx prisma generate >nul 2>&1
+call npx prisma generate
 
-REM 8. Ensure production build exists for peak performance
+REM Ensure build exists for production performance
 if not exist ".next\BUILD_ID" (
+    echo [Attendly] Compiling production build...
     call npm run build
 )
 
-REM 9. Ensure Desktop shortcut exists
-if exist "scripts\create-shortcuts.js" (
-    node scripts\create-shortcuts.js >nul 2>&1
-)
-
-REM 10. Launch Desktop application (Electron) or web app + browser fallback
+REM Launch the Electron Desktop application
 if exist "node_modules\.bin\electron.cmd" (
     call node_modules\.bin\electron.cmd .
 ) else (
-    where electron >nul 2>&1
-    if !errorLevel! equ 0 (
-        call electron .
-    ) else (
-        call node scripts\start-internet.js
-    )
+    call npx electron .
 )

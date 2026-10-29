@@ -5,6 +5,7 @@
 .next
 node_modules
 coverage
+release
 dist
 *.db
 *.db-journal
@@ -12,10 +13,3 @@ dist
 *.db-shm
 *.tsbuildinfo
 .tunnel_url
-release/win-unpacked
-release/mac
-release/mac-arm64
-release/mac-universal
-release/*.tmp
-release/*__uninstaller*
-release/*.blockmap

@@ -161,6 +161,5 @@ jobs:
             dist/*.pkg
             Install-Attendly-Windows.bat
             Install-Attendly-Mac.command
-            Install-Attendly-Linux.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
