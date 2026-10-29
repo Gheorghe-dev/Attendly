@@ -849,8 +849,45 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 
+// Docker Lifecycle
+let startedDockerCompose = false;
+
+function ensureDockerCompose() {
+  const composePath = path.join(ROOT_DIR, 'docker-compose.yml');
+  if (!fs.existsSync(composePath)) return false;
+
+  try {
+    execSync('docker --version', { stdio: 'ignore', timeout: 3000 });
+  } catch {
+    return false;
+  }
+
+  try {
+    console.log('[Electron] Ensuring Docker Compose containers are running...');
+    execSync('docker compose up -d', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 45000 });
+    startedDockerCompose = true;
+    return true;
+  } catch (err) {
+    console.warn('[Electron] Could not start Docker Compose:', err.message);
+    return false;
+  }
+}
+
+function stopDockerCompose() {
+  if (startedDockerCompose) {
+    try {
+      console.log('[Electron] Stopping Docker Compose containers on exit...');
+      execSync('docker compose down', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 25000 });
+      startedDockerCompose = false;
+    } catch (err) {
+      console.warn('[Electron] Error stopping Docker Compose:', err.message);
+    }
+  }
+}
+
 // App Lifecycle
 app.whenReady().then(async () => {
+  ensureDockerCompose();
   // Dynamically resolve an open usable port if default 3000 is occupied
   PORT = await resolveUsablePort(PORT);
   SERVER_URL = `http://127.0.0.1:${PORT}`;
@@ -926,6 +963,7 @@ app.whenReady().then(async () => {
 });
 
 function cleanup() {
+  stopDockerCompose();
   if (isQuitting) return;
   isQuitting = true;
   console.log('[Electron] Cleaning up child processes…');

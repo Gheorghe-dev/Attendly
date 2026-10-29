@@ -160,9 +160,13 @@ To stop Attendly at any time:
 
 Run Attendly inside an isolated local container server with an integrated Cloudflare worldwide tunnel and Nginx reverse proxy. This ensures your app does not run bare-metal on localhost and is accessible to any phone or laptop worldwide.
 
-#### 1-Click Launchers:
-- **Windows**: Double-click `Start-Container.bat`
-- **macOS / Linux**: Run `./start-container.sh`
+#### 1-Click Launchers (Automated Docker Lifecycle):
+- **Windows**: Double-click **`Attendly.lnk`** on Desktop or run **`Start-Container.bat`**
+- **macOS / Linux**: Double-click **`Attendly.command`** or run **`./start-container.sh`**
+
+> **Automatic Docker Open & Close Lifecycle**:
+> - **On App Open**: The launcher checks if Docker is running; if not, it automatically starts Docker Desktop and waits for the engine daemon to become ready. Then it launches the Attendly application container, reverse proxy, and Cloudflare worldwide tunnel, and opens the app in a dedicated frameless desktop window.
+> - **On App Close**: Simply close the Attendly app window (or press `Ctrl+C` in the launcher terminal). The launcher automatically stops all Docker containers (`docker compose down`) and cleanly shuts down the Docker engine. All attendance data remains safely saved in the persistent Docker volume `attendly-sqlite-data`.
 
 #### Or using Docker Compose directly:
 Create your `.env` from template:
@@ -182,8 +186,9 @@ docker compose down
 ```
 
 **How it works:**
+- **Automated Docker Lifecycle**: Starts Docker automatically when you launch the app, and stops Docker automatically when you close the app window.
 - **Automatic Cloudflare Worldwide Tunnel**: When the container server starts, it establishes an encrypted tunnel with Cloudflare Edge (`https://*.trycloudflare.com`). QR codes rendered for attendance automatically use this public URL so students on mobile 4G/5G or any Wi-Fi network can scan and check in.
-- **Local Access & Reverse Proxy**: Accessible locally on `http://localhost` (or direct container port `3000`), or via local Wi-Fi IP.
+- **Local Access & Reverse Proxy**: Accessible locally on `http://localhost:8080` (or direct container port `3000`), or via local Wi-Fi IP.
 - **Persistent Data**: SQLite records are stored in the Docker volume `attendly-sqlite-data`. Updates and rebuilds keep all attendance data intact.
 
 ---

@@ -4,6 +4,16 @@ cd /d "%~dp0"
 title Attendly Container Server with Cloudflare
 color 0A
 
+:: Prefer PowerShell lifecycle manager for native frameless app window and automated stop on window close
+where powershell >nul 2>&1
+if %errorlevel% equ 0 (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\launch-app.ps1" %*
+    exit /b %errorlevel%
+)
+
+:: -----------------------------------------------------------------------------
+:: Fallback CMD Lifecycle Manager (if PowerShell is disabled)
+:: -----------------------------------------------------------------------------
 echo ================================================================================
 echo                   ATTENDLY CONTAINER SERVER WITH CLOUDFLARE
 echo ================================================================================
@@ -27,6 +37,8 @@ if %errorlevel% neq 0 (
     echo [!] Docker engine is not running. Attempting to start Docker Desktop...
     if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" (
         start "" "%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+    ) else if exist "%LocalAppData%\Programs\DockerDesktop\Docker Desktop.exe" (
+        start "" "%LocalAppData%\Programs\DockerDesktop\Docker Desktop.exe"
     ) else if exist "%LocalAppData%\Programs\Docker\Docker\Docker Desktop.exe" (
         start "" "%LocalAppData%\Programs\Docker\Docker\Docker Desktop.exe"
     )
@@ -100,22 +112,29 @@ if defined CF_URL (
     echo       View live logs with: docker compose logs -f
 )
 echo.
-echo   [+] LOCAL REVERSE PROXY URL:   http://localhost
+echo   [+] LOCAL REVERSE PROXY URL:   http://localhost:8080
 echo.
 echo ================================================================================
-echo Useful Commands:
-echo   - View live logs:     docker compose logs -f
-echo   - Stop container:     docker compose down -or- double-click Stop-Container.bat
-echo   - Rebuild container:  docker compose up -d --build
+echo   Attendly is running. Keep this window open while using the app.
+echo   Closing this window or pressing any key will AUTOMATICALLY stop Docker.
 echo ================================================================================
 echo.
 
 :: 6. Open browser to the live application
-if defined CF_URL (
-    start "" "!CF_URL!"
-) else (
-    start "" "http://localhost"
-)
+set "TARGET_URL=http://localhost:8080"
+if defined CF_URL set "TARGET_URL=!CF_URL!"
 
-echo Container is running in background. Close this window anytime.
-ping 127.0.0.1 -n 3 >nul
+start "" "!TARGET_URL!"
+
+echo.
+set /p USER_EXIT="Press [ENTER] at any time to close Attendly and stop Docker containers... "
+
+echo.
+echo ================================================================================
+echo      STOPPING ATTENDLY CONTAINERS (SAVING ALL DATA SAFELY)...
+echo ================================================================================
+docker compose down
+echo.
+echo [OK] Containers stopped successfully.
+ping 127.0.0.1 -n 2 >nul
+exit /b 0
