@@ -1,5 +1,5 @@
 # ==============================================================================
-# Attendly — Production Docker Compose with Local Wi-Fi Reverse Proxy
+# Attendly — Production Docker Compose with Local Container Server & Cloudflare
 # ==============================================================================
 services:
   attendly:
@@ -8,16 +8,21 @@ services:
       dockerfile: Dockerfile
     container_name: attendly-app
     restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
     environment:
       PORT: 3000
       HOSTNAME: "0.0.0.0"
       NODE_ENV: production
       DATABASE_URL: file:./dev.db
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      AUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-attendly-container-production-secret-key-32chars}
+      AUTH_SECRET: ${NEXTAUTH_SECRET:-attendly-container-production-secret-key-32chars}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+      NEXTAUTH_URL_INTERNAL: "http://127.0.0.1:3000"
       AUTH_TRUST_HOST: "true"
       APP_URL: ${APP_URL:-http://localhost}
+      CLOUDFLARE_TUNNEL_ACTIVE: "true"
+      CLOUDFLARE_TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     volumes:
       - attendly-data:/app/prisma
     healthcheck:
@@ -25,7 +30,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 25s
     networks:
       - attendly-net
 

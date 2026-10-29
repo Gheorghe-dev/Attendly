@@ -296,20 +296,38 @@ if ($healthy) {
     Write-Host " [WARN] Application took longer to start. Check logs using: docker compose logs -f" -ForegroundColor Yellow
 }
 
+Write-Host "Checking Cloudflare Tunnel handshake..." -NoNewline
+$cfUrl = $null
+for ($k = 0; $k -lt 15; $k++) {
+    try {
+        $cfOut = docker exec attendly-app cat /app/.tunnel_url 2>$null
+        if ($cfOut -and $cfOut.Trim() -like "https://*") {
+            $cfUrl = $cfOut.Trim()
+            break
+        }
+    } catch {}
+    Start-Sleep -Seconds 2
+    Write-Host "." -NoNewline
+}
+Write-Host ""
+
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "               INSTALLATION COMPLETE!                   " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Access Points:" -ForegroundColor White
-Write-Host "  Local Computer: $displayUrl" -ForegroundColor Cyan
-Write-Host "  Mobile Devices (Same Wi-Fi): $displayUrl" -ForegroundColor Cyan
+if ($cfUrl) {
+    Write-Host "  Worldwide Access (Cloudflare): $cfUrl" -ForegroundColor Green
+    Write-Host "    -> Accessible on ANY Wi-Fi or cellular network (4G/5G) worldwide." -ForegroundColor DarkGreen
+} else {
+    Write-Host "  Worldwide Access (Cloudflare): Initializing in background (see docker compose logs -f)" -ForegroundColor Yellow
+}
+Write-Host "  Local Computer:                $displayUrl" -ForegroundColor Cyan
+Write-Host "  Local Wi-Fi Network:           $displayUrl" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Remote / Internet Access Options:" -ForegroundColor White
-Write-Host "  Option A (Free Cloudflare Quick Tunnel):" -ForegroundColor Gray
-Write-Host "    docker run --rm cloudflare/cloudflared:latest tunnel --url $displayUrl" -ForegroundColor Gray
-Write-Host "    Trade-off: Zero port opening required; zero public IP exposure." -ForegroundColor Gray
-Write-Host "  Option B (Router Port Forwarding):" -ForegroundColor Gray
-Write-Host "    Forward external port to internal IP $displayUrl in your router." -ForegroundColor Gray
-Write-Host "    Trade-off: Exposes your home/office public IP to the internet." -ForegroundColor Gray
+Write-Host "Useful Commands:" -ForegroundColor White
+Write-Host "  View Live Logs:   docker compose logs -f" -ForegroundColor Gray
+Write-Host "  Stop Containers:  docker compose down" -ForegroundColor Gray
+Write-Host "  Update / Rebuild: docker compose up -d --build" -ForegroundColor Gray
 Write-Host "========================================================" -ForegroundColor Green

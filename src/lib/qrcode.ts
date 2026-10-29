@@ -82,6 +82,9 @@ export function isCloudflaredProcessRunning(): boolean {
   if (activeTunnelProc && activeTunnelProc.exitCode === null && !activeTunnelProc.killed) {
     return true;
   }
+  if (process.env.CLOUDFLARE_TUNNEL_ACTIVE === 'true') {
+    return true;
+  }
   const cpMod = getRuntimeChildProcess();
   if (!cpMod) return false;
   try {
@@ -94,7 +97,7 @@ export function isCloudflaredProcessRunning(): boolean {
       });
       return out.toLowerCase().includes('cloudflared.exe');
     } else {
-      const out = cpMod.execSync('pgrep -x cloudflared || true', {
+      const out = cpMod.execSync('pgrep cloudflared || pidof cloudflared || true', {
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'ignore'],
         timeout: 1000,

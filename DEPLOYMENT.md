@@ -7,39 +7,62 @@ This guide explains how to deploy Attendly using Docker and the automated one-co
 ## Architecture Overview
 
 ```
-                      [ Local Wi-Fi Network ]
-                                 │
-     ┌───────────────────────────┼───────────────────────────┐
-     ▼                           ▼                           ▼
-[Teacher Laptop]        [Student Phone A]           [Student Phone B]
-(Browser Dashboard)      (QR Camera Scan)            (QR Camera Scan)
-     │                           │                           │
-     └───────────────────────────┼───────────────────────────┘
-                                 │ HTTP :80 / :8080 (LAN IP)
-                                 ▼
-                     ┌───────────────────────┐
-                     │     attendly-proxy    │ (Nginx Reverse Proxy)
-                     │    (Port 80 / 8080)   │
-                     └───────────┬───────────┘
-                                 │ Internal Docker Network (attendly-net)
-                                 ▼
-                     ┌───────────────────────┐
-                     │      attendly-app     │ (Next.js 14 + Node 20)
-                     │      (Port 3000)      │
-                     └───────────┬───────────┘
-                                 │
-                     ┌───────────▼───────────┐
-                     │ attendly-sqlite-data  │ (Persistent SQLite Volume)
-                     └───────────────────────┘
+                      [ Worldwide Internet / Cellular / Any Wi-Fi ]
+                                          │
+                                          ▼
+                      ┌───────────────────────────────────────┐
+                      │    Cloudflare Edge Network (TLS)      │
+                      │    https://*.trycloudflare.com        │
+                      └───────────────────┬───────────────────┘
+                                          │ Encrypted Tunnel
+                                          ▼
+                               ┌─────────────────────┐
+                               │   attendly-app      │ (Next.js 14 + Node 20 + Cloudflared)
+                               │   Internal :3000    │
+                               └──────────┬──────────┘
+                                          │
+                      ┌───────────────────┴───────────────────┐
+                      │                                       │
+                      ▼                                       ▼
+           ┌───────────────────────┐               ┌─────────────────────┐
+           │     attendly-proxy    │               │ attendly-sqlite-data│
+           │  (Nginx Reverse Proxy)│               │ (Persistent Volume) │
+           │   Port 80 / 8080      │               └─────────────────────┘
+           └──────────┬────────────┘
+                      │
+           [ Local Wi-Fi Network ]
+                      │
+   ┌──────────────────┴──────────────────┐
+   ▼                                     ▼
+[Teacher Laptop]                [Local Student Wi-Fi]
 ```
 
-- **Reverse Proxy**: Nginx (`nginx:alpine`) acts as the front-facing gateway, listening on all interfaces (`0.0.0.0:80` or an auto-assigned fallback port such as `8080`).
-- **Application Container**: Runs the Next.js 14 Node application on internal port `3000`.
+- **Cloudflare Worldwide Tunnel**: Directly integrated into the application container. Generates an instant public HTTPS URL (`https://*.trycloudflare.com`) on startup with zero configuration or port forwarding. All QR codes automatically embed this public URL.
+- **Reverse Proxy**: Nginx (`nginx:alpine`) acts as the front-facing LAN gateway, listening on all interfaces (`0.0.0.0:80` or an auto-assigned fallback port such as `8080`).
+- **Application Container**: Runs the Next.js 14 Node application alongside the Cloudflare Tunnel daemon.
 - **Database**: SQLite database stored in a named Docker volume (`attendly-sqlite-data`) at `/app/prisma`, persisting across container restarts and updates.
 
 ---
 
-## 1-Command Installation
+## 1-Click Launchers (Fastest Way to Start)
+
+### Windows
+Double-click `Start-Container.bat` or run:
+```cmd
+.\Start-Container.bat
+```
+This script ensures Docker Desktop is running, starts the containers, waits for the Cloudflare worldwide tunnel to connect, prints the live public URL, and opens the browser.
+
+### macOS & Linux
+Run:
+```bash
+chmod +x start-container.sh
+./start-container.sh
+```
+
+---
+
+## 1-Command Automated Installers
 
 ### Windows (PowerShell or Double-Click Batch)
 

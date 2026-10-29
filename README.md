@@ -156,34 +156,35 @@ To stop Attendly at any time:
 
 ---
 
-### Option C: Docker & Docker Compose
+### Option C: Local Container Server with Cloudflare (Docker)
 
-Deploy Attendly on any server or workstation without installing Node.js on the host.
-Create a root-level `.env` file with a unique authentication secret before starting Docker. Do not expose the app with the sample/default secret:
+Run Attendly inside an isolated local container server with an integrated Cloudflare worldwide tunnel and Nginx reverse proxy. This ensures your app does not run bare-metal on localhost and is accessible to any phone or laptop worldwide.
 
-```bash
-printf 'NEXTAUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > .env
-```
+#### 1-Click Launchers:
+- **Windows**: Double-click `Start-Container.bat`
+- **macOS / Linux**: Run `./start-container.sh`
 
-On Windows PowerShell:
-
+#### Or using Docker Compose directly:
+Create your `.env` from template:
 ```powershell
-$bytes = New-Object byte[] 32
-$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-$secret = [Convert]::ToBase64String($bytes)
-$rng.Dispose()
-"NEXTAUTH_SECRET=$secret" | Set-Content .env -Encoding ascii
+Copy-Item .env.example .env
 ```
 
-Then start the app, follow logs, and stop it with:
+Start the containers:
 ```bash
-docker compose up -d
+docker compose up -d --build
 docker compose logs -f
+```
+
+To stop:
+```bash
 docker compose down
 ```
 
-Access Attendly in your browser at: **`http://localhost:3000`**. Docker Compose does not start a public tunnel. To let phones on your local network scan working QR links, add `APP_URL=http://<host-LAN-IP>:3000` and `NEXTAUTH_URL=http://<host-LAN-IP>:3000` to `.env`, then restart Compose; use a trusted HTTPS URL and suitable network configuration for access from outside your LAN. All SQLite database files are persistently mounted in Docker volume `attendly-data`. Never commit the `.env` file.
+**How it works:**
+- **Automatic Cloudflare Worldwide Tunnel**: When the container server starts, it establishes an encrypted tunnel with Cloudflare Edge (`https://*.trycloudflare.com`). QR codes rendered for attendance automatically use this public URL so students on mobile 4G/5G or any Wi-Fi network can scan and check in.
+- **Local Access & Reverse Proxy**: Accessible locally on `http://localhost` (or direct container port `3000`), or via local Wi-Fi IP.
+- **Persistent Data**: SQLite records are stored in the Docker volume `attendly-sqlite-data`. Updates and rebuilds keep all attendance data intact.
 
 ---
 

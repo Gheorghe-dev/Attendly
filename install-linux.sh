@@ -199,19 +199,34 @@ else
     echo "⚠️  Application took longer to respond. Check logs with: $DOCKER_COMPOSE logs -f"
 fi
 
+echo -n "Checking Cloudflare Tunnel handshake..."
+CF_URL=""
+for i in {1..15}; do
+    CF_URL=$(docker exec attendly-app cat /app/.tunnel_url 2>/dev/null || true)
+    if [ -n "$CF_URL" ] && [[ "$CF_URL" == https://* ]]; then
+        break
+    fi
+    sleep 2
+    echo -n "."
+done
+echo ""
+
 echo ""
 echo "========================================================"
 echo "               INSTALLATION COMPLETE! 🎉                "
 echo "========================================================"
 echo "Access Points:"
-echo "  💻 Local Computer: $DISPLAY_URL"
-echo "  📱 Mobile Devices (Same Wi-Fi): $DISPLAY_URL"
+if [ -n "$CF_URL" ] && [[ "$CF_URL" == https://* ]]; then
+    echo "  🌐 Worldwide Access (Cloudflare): $CF_URL"
+    echo "     -> Accessible on ANY Wi-Fi or mobile cellular network (4G/5G) worldwide."
+else
+    echo "  🌐 Worldwide Access (Cloudflare): Initializing in background (see $DOCKER_COMPOSE logs -f)"
+fi
+echo "  💻 Local Computer:             $DISPLAY_URL"
+echo "  📱 Local Wi-Fi Network:        $DISPLAY_URL"
 echo ""
-echo "Remote / Internet Access Options:"
-echo "  Option A (Free Cloudflare Quick Tunnel):"
-echo "    docker run --rm cloudflare/cloudflared:latest tunnel --url $DISPLAY_URL"
-echo "    Trade-off: Zero port forwarding required; zero public IP exposure."
-echo "  Option B (Router Port Forwarding):"
-echo "    Forward external port $TARGET_PORT to $LAN_IP:$TARGET_PORT in your router."
-echo "    Trade-off: Exposes your public IP directly to the internet."
+echo "Useful Commands:"
+echo "  View Live Logs:   $DOCKER_COMPOSE logs -f"
+echo "  Stop Containers:  $DOCKER_COMPOSE down"
+echo "  Update / Rebuild: $DOCKER_COMPOSE up -d --build"
 echo "========================================================"
