@@ -26,7 +26,7 @@ function get(url: string): Promise<{ status: number; data: string; contentType?:
   });
 }
 
-function post(url: string, body: unknown): Promise<{ status: number; json: any }> {
+function post(url: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<{ status: number; json: any }> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const u = new URL(url);
@@ -39,6 +39,7 @@ function post(url: string, body: unknown): Promise<{ status: number; json: any }
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
+          ...extraHeaders,
         },
       },
       (res) => {
@@ -251,12 +252,18 @@ async function runVerification() {
         courseId: course.id,
       },
     });
-    const remoteRes = await post(`http://127.0.0.1:3000/api/attend/${testSession.token}`, {
-      email: remoteStudentEmail,
-      deviceId: 'device-remote-1',
-      deviceFingerprint: 'fp-remote',
-      coords: { latitude: 45.7537, longitude: 21.2257 }, // Timisoara coords
-    });
+    const remoteRes = await post(
+      `http://127.0.0.1:3000/api/attend/${testSession.token}`,
+      {
+        email: remoteStudentEmail,
+        deviceId: 'device-remote-1',
+        deviceFingerprint: 'fp-remote',
+        coords: { latitude: 45.7537, longitude: 21.2257 }, // Timisoara coords
+      },
+      {
+        'x-forwarded-for': '86.120.10.5', // Simulate remote public internet IP
+      }
+    );
     assert(remoteRes.status === 200, 'Remote student check-in is NOT blocked (200 OK)');
     assert(remoteRes.json.code === 'SUCCESS', 'Remote check-in code is SUCCESS');
     assert(remoteRes.json.distance > 150000, `Distance telemetry reports remote distance (~${Math.round(remoteRes.json.distance / 1000)} km)`);

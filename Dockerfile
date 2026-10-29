@@ -43,7 +43,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
 # Install Nginx reverse proxy and utility tools
-RUN apk add --no-cache nginx curl bash
+RUN apk add --no-cache nginx curl bash coreutils
 
 # Create directory structure for Nginx, runtime, and downloads
 RUN mkdir -p /var/www/downloads /etc/nginx/http.d /etc/nginx/conf.d /app/release /app/prisma
