@@ -76,6 +76,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         }
       }
 
+      // Immediate flush so edge proxies (Cloudflare, Nginx) establish stream immediately
+      controller.enqueue(encoder.encode(': connected\n\n'));
       // Initial push
       sendUpdate();
       // Push every 2 seconds
@@ -95,9 +97,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform, no-store',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no', // Critical: prevents Cloudflare & Nginx from buffering SSE chunks
     },
   });
 }

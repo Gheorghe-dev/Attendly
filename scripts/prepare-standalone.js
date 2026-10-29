@@ -11,6 +11,15 @@ if (!fs.existsSync(STANDALONE_DIR)) {
   process.exit(1);
 }
 
+// Clean up any accidental recursive release or cache folders
+for (const badSub of ['release', '.git', 'out']) {
+  const p = path.join(STANDALONE_DIR, badSub);
+  if (fs.existsSync(p)) {
+    fs.rmSync(p, { recursive: true, force: true });
+    console.log(`[prepare-standalone] Cleaned up stray folder: ${badSub}`);
+  }
+}
+
 function copyRecursiveSync(src, dest) {
   if (!fs.existsSync(src)) return;
   const stat = fs.statSync(src);

@@ -54,6 +54,17 @@ export async function POST(req: NextRequest) {
   const classroomName = formatClassroomName(rawClassroom);
   const classroomSlug = slugifyClassroom(rawClassroom);
 
+  // Close any previously open sessions for this course to prevent stale session overlaps
+  if (!status || status === 'open') {
+    await prisma.session.updateMany({
+      where: {
+        courseId,
+        status: 'open',
+      },
+      data: { status: 'closed' },
+    });
+  }
+
   // Archive any older session holding this classroom slug so the new live session gets the clean URL
   const existingWithToken = await prisma.session.findUnique({
     where: { token: classroomSlug },

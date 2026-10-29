@@ -16,6 +16,11 @@ export interface QRProjectionModalProps {
   presentCount: number;
   enrolledCount: number;
   isOpen: boolean;
+  recentAttendees?: Array<{
+    name: string;
+    group: string;
+    checkInTime?: string | null;
+  }>;
 }
 
 export function QRProjectionModal({
@@ -30,6 +35,7 @@ export function QRProjectionModal({
   presentCount,
   enrolledCount,
   isOpen,
+  recentAttendees = [],
 }: QRProjectionModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -215,6 +221,27 @@ export function QRProjectionModal({
               </span>
               <span>{Math.max(0, enrolledCount - presentCount)} remaining</span>
             </div>
+
+            {/* Live Real-time Checked-in Students on Projector */}
+            {recentAttendees && recentAttendees.length > 0 && (
+              <div className="mt-4 w-full max-w-sm space-y-1.5 text-left">
+                <div className="text-[11px] font-mono text-emerald-400 uppercase tracking-wider flex items-center gap-1.5 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Confirmed Present ({recentAttendees.length})</span>
+                </div>
+                <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+                  {recentAttendees.slice(0, 6).map((att, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-xs text-white"
+                    >
+                      <span className="font-medium truncate text-emerald-200">✓ {att.name}</span>
+                      <span className="text-[10px] font-mono text-emerald-400/90 ml-2 shrink-0">{att.group}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="pt-4 border-t border-white/10 w-full max-w-sm">

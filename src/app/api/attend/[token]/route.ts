@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
       );
     }
 
-    // 2. Predefined classroom & token lookup
+    // 2. Predefined classroom & token lookup (prioritized to prevent cross-session collisions)
     let rawToken = params.token.trim();
     try {
       rawToken = decodeURIComponent(rawToken).trim();
@@ -69,30 +69,59 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     const tokenSlug = slugifyClassroom(rawToken);
     const classroomName = formatClassroomName(rawToken);
 
-    const matchCriteria = [
-      { id: rawToken },
-      { token: rawToken },
-      { token: tokenSlug },
-      { classroom: rawToken },
-      { classroom: tokenSlug },
-      { classroom: classroomName },
-    ];
-
-    // Prefer open sessions first (most recent)
-    let session = await prisma.session.findFirst({
-      where: {
-        OR: matchCriteria,
-        status: 'open',
-      },
-      orderBy: { date: 'desc' },
+    // Priority 1: Exact session ID match (unambiguous session target)
+    let session = await prisma.session.findUnique({
+      where: { id: rawToken },
       include: { course: true },
     });
 
-    // If no open session, find the most recent session (e.g. closed)
+    // Priority 2: Exact token match (prefer open)
     if (!session) {
       session = await prisma.session.findFirst({
-        where: { OR: matchCriteria },
-        orderBy: { date: 'desc' },
+        where: { token: rawToken, status: 'open' },
+        orderBy: { createdAt: 'desc' },
+        include: { course: true },
+      });
+    }
+
+    // Priority 3: Token slug match (prefer open)
+    if (!session && tokenSlug) {
+      session = await prisma.session.findFirst({
+        where: { token: tokenSlug, status: 'open' },
+        orderBy: { createdAt: 'desc' },
+        include: { course: true },
+      });
+    }
+
+    // Priority 4: Classroom name match (find currently active open session in that classroom)
+    if (!session) {
+      session = await prisma.session.findFirst({
+        where: {
+          OR: [
+            { classroom: rawToken },
+            { classroom: tokenSlug },
+            { classroom: classroomName },
+          ],
+          status: 'open',
+        },
+        orderBy: { createdAt: 'desc' },
+        include: { course: true },
+      });
+    }
+
+    // Priority 5: Fallback to most recent closed session
+    if (!session) {
+      session = await prisma.session.findFirst({
+        where: {
+          OR: [
+            { id: rawToken },
+            { token: rawToken },
+            { token: tokenSlug },
+            { classroom: rawToken },
+            { classroom: classroomName },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
         include: { course: true },
       });
     }
@@ -398,29 +427,59 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   const tokenSlug = slugifyClassroom(rawToken);
   const classroomName = formatClassroomName(rawToken);
 
-  const matchCriteria = [
-    { id: rawToken },
-    { token: rawToken },
-    { token: tokenSlug },
-    { classroom: rawToken },
-    { classroom: tokenSlug },
-    { classroom: classroomName },
-  ];
-
-  // Prefer open sessions first (most recent)
-  let session = await prisma.session.findFirst({
-    where: {
-      OR: matchCriteria,
-      status: 'open',
-    },
-    orderBy: { date: 'desc' },
+  // Priority 1: Exact session ID match
+  let session = await prisma.session.findUnique({
+    where: { id: rawToken },
     include: { course: { select: { name: true } } },
   });
 
+  // Priority 2: Exact token match (prefer open)
   if (!session) {
     session = await prisma.session.findFirst({
-      where: { OR: matchCriteria },
-      orderBy: { date: 'desc' },
+      where: { token: rawToken, status: 'open' },
+      orderBy: { createdAt: 'desc' },
+      include: { course: { select: { name: true } } },
+    });
+  }
+
+  // Priority 3: Token slug match (prefer open)
+  if (!session && tokenSlug) {
+    session = await prisma.session.findFirst({
+      where: { token: tokenSlug, status: 'open' },
+      orderBy: { createdAt: 'desc' },
+      include: { course: { select: { name: true } } },
+    });
+  }
+
+  // Priority 4: Classroom name match (prefer open)
+  if (!session) {
+    session = await prisma.session.findFirst({
+      where: {
+        OR: [
+          { classroom: rawToken },
+          { classroom: tokenSlug },
+          { classroom: classroomName },
+        ],
+        status: 'open',
+      },
+      orderBy: { createdAt: 'desc' },
+      include: { course: { select: { name: true } } },
+    });
+  }
+
+  // Priority 5: Fallback to closed
+  if (!session) {
+    session = await prisma.session.findFirst({
+      where: {
+        OR: [
+          { id: rawToken },
+          { token: rawToken },
+          { token: tokenSlug },
+          { classroom: rawToken },
+          { classroom: classroomName },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
       include: { course: { select: { name: true } } },
     });
   }

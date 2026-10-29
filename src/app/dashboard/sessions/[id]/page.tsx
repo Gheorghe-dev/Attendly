@@ -152,7 +152,66 @@ export default function LiveSessionMonitorPage() {
 
   useEffect(() => {
     loadInitialData();
-  }, [loadInitialData]);
+
+    // Resilient live polling: ensures attendance updates immediately on PC even if SSE
+    // is buffered by Cloudflare/proxy or disconnected.
+    const pollInterval = setInterval(async () => {
+      try {
+        const sessionRes = await fetch(`/api/sessions/${id}`);
+        if (sessionRes.ok) {
+          const sData = await sessionRes.json();
+          setSession((prev) => {
+            if (!prev) return sData;
+
+            // Detect newly added attendance records
+            const prevIds = new Set(prev.attendance.map((a) => a.studentId));
+            const newlyAdded = (sData.attendance || []).filter(
+              (a: { studentId: string }) => !prevIds.has(a.studentId)
+            );
+
+            if (newlyAdded.length > 0) {
+              const firstNew = newlyAdded[0];
+              const distInfo =
+                firstNew.distanceMeters != null
+                  ? ` (${formatDistance(firstNew.distanceMeters)})`
+                  : '';
+              const studentName = firstNew.student?.name || 'A student';
+              const studentGroup = firstNew.student?.group || '';
+              setAriaAnnouncement(`${studentName} confirmed attendance${distInfo}.`);
+              toast.success(`${studentName} (${studentGroup}) checked in${distInfo}.`);
+
+              const newIds: string[] = newlyAdded.map((a: { studentId: string }) => a.studentId);
+              setRecentCheckedInIds((old) => new Set<string>([...Array.from(old), ...newIds]));
+              setTimeout(() => {
+                setRecentCheckedInIds((old) => {
+                  const next = new Set<string>(old);
+                  newIds.forEach((sid) => next.delete(sid));
+                  return next;
+                });
+              }, 2000);
+            }
+
+            return sData;
+          });
+        }
+      } catch {}
+    }, 2000);
+
+    const handleFocus = () => {
+      loadInitialData();
+    };
+    window.addEventListener('focus', handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleFocus();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [id, loadInitialData]);
 
   // Continuously refresh QR code until Cloudflare worldwide tunnel URL is available for any Wi-Fi
   useEffect(() => {
@@ -326,7 +385,9 @@ export default function LiveSessionMonitorPage() {
       });
     });
 
+    const seenStudentIds = new Set<string>();
     const list: RosterStudent[] = (session.enrolledStudents || []).map((s) => {
+      seenStudentIds.add(s.id);
       const pres = presentMap.get(s.id);
       return {
         id: s.id,
@@ -338,6 +399,24 @@ export default function LiveSessionMonitorPage() {
         distance: pres?.distance ?? null,
         city: pres?.city ?? null,
       };
+    });
+
+    // GUARANTEED INCLUSION: Any student who checked in MUST appear in the roster,
+    // even if missing from enrolledStudents due to group mismatch or post-creation enrollment!
+    session.attendance.forEach((a) => {
+      if (a.student && !seenStudentIds.has(a.studentId)) {
+        seenStudentIds.add(a.studentId);
+        list.push({
+          id: a.student.id || a.studentId,
+          name: a.student.name,
+          email: a.student.email,
+          group: a.student.group,
+          isPresent: true,
+          checkInTime: a.verifiedAt,
+          distance: a.distanceMeters ?? null,
+          city: a.studentCity ?? null,
+        });
+      }
     });
 
     // Sort: present students first by check-in time desc, then absent students alphabetically
@@ -353,6 +432,16 @@ export default function LiveSessionMonitorPage() {
       return a.name.localeCompare(b.name);
     });
   }, [session]);
+
+  // Real-time confirmed attendees list for projection modal ticker
+  const recentAttendees = useMemo(() => {
+    if (!session?.attendance) return [];
+    return session.attendance.map((a) => ({
+      name: a.student?.name || 'Student',
+      group: a.student?.group || '',
+      checkInTime: a.verifiedAt,
+    }));
+  }, [session?.attendance]);
 
   // Filtered Roster
   const filteredRoster = useMemo(() => {
@@ -1077,6 +1166,7 @@ export default function LiveSessionMonitorPage() {
         presentCount={presentCount}
         enrolledCount={enrolledCount}
         isOpen={isOpen}
+        recentAttendees={recentAttendees}
       />
 
       {/* ── Classroom GPS Calibration Modal ──────────────────────────── */}

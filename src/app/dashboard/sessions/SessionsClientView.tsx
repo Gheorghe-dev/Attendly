@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -40,11 +40,47 @@ interface SessionsClientViewProps {
 }
 
 export function SessionsClientView({ initialSessions }: SessionsClientViewProps) {
+  const [sessions, setSessions] = useState<SessionItem[]>(initialSessions);
   const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [search, setSearch] = useState('');
 
+  const refreshSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sessions');
+      if (res.ok) {
+        const raw = await res.json();
+        if (Array.isArray(raw)) {
+          const formatted: SessionItem[] = raw.map((s) => ({
+            id: s.id,
+            name: s.name,
+            date: typeof s.date === 'string' ? s.date : new Date(s.date).toISOString(),
+            status: s.status,
+            groups: s.groups,
+            classroom: s.classroom,
+            course: {
+              id: s.course.id,
+              name: s.course.name,
+            },
+            verifiedCount: s.attendance?.length ?? s._count?.attendance ?? 0,
+          }));
+          setSessions(formatted);
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(refreshSessions, 3000);
+    const handleFocus = () => refreshSessions();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [refreshSessions]);
+
   const filtered = useMemo(() => {
-    return initialSessions.filter((s) => {
+    return sessions.filter((s) => {
       if (filter === 'open' && s.status !== 'open') return false;
       if (filter === 'closed' && s.status !== 'closed') return false;
       if (search.trim()) {
@@ -57,19 +93,19 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
       }
       return true;
     });
-  }, [initialSessions, filter, search]);
+  }, [sessions, filter, search]);
 
   const openCount = useMemo(
-    () => initialSessions.filter((s) => s.status === 'open').length,
-    [initialSessions]
+    () => sessions.filter((s) => s.status === 'open').length,
+    [sessions]
   );
 
   const totalVerified = useMemo(
-    () => initialSessions.reduce((acc, s) => acc + s.verifiedCount, 0),
-    [initialSessions]
+    () => sessions.reduce((acc, s) => acc + s.verifiedCount, 0),
+    [sessions]
   );
 
-  if (initialSessions.length === 0) {
+  if (sessions.length === 0) {
     return (
       <EmptyState
         icon={<Layers className="w-6 h-6" />}
@@ -122,7 +158,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            All ({initialSessions.length})
+            All ({sessions.length})
           </button>
           <button
             type="button"
@@ -145,7 +181,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Closed ({initialSessions.length - openCount})
+            Closed ({sessions.length - openCount})
           </button>
         </div>
       </div>
@@ -158,7 +194,7 @@ export function SessionsClientView({ initialSessions }: SessionsClientViewProps)
               Total Sessions
             </span>
             <div className="text-xl font-bold font-mono text-foreground tabular-nums">
-              {initialSessions.length}
+              {sessions.length}
             </div>
           </div>
           <Layers className="w-5 h-5 text-muted-foreground opacity-40" />

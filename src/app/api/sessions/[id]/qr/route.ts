@@ -31,7 +31,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const requestOrigin = hostHeader ? `${req.headers.get('x-forwarded-proto') ?? 'http'}://${hostHeader}` : '';
     const requestIsLocal = isPrivateOrLocalUrl(requestOrigin);
 
-    const tokenToUse = s.token || (s.classroom ? slugifyClassroom(s.classroom) : s.id);
+    // Encode exact session ID in QR code so scanning on screen ALWAYS checks in to this exact session
+    const tokenToUse = s.id;
     const url = getAttendanceUrl(tokenToUse, requestOrigin);
     const qr = await generateQRCodeDataURL(url);
     const isWorldwide = Boolean(url.includes('trycloudflare.com') || !isPrivateOrLocalUrl(url));
