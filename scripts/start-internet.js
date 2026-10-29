@@ -86,10 +86,28 @@ function freePort(port = 3000) {
   });
 }
 
+let browserOpened = false;
+
+function openLocalBrowser() {
+  if (browserOpened) return;
+  browserOpened = true;
+  const localUrl = 'http://localhost:3000';
+  let openCmd;
+  if (process.platform === 'win32') {
+    openCmd = `start "" "${localUrl}"`;
+  } else if (process.platform === 'darwin') {
+    openCmd = `open "${localUrl}"`;
+  } else {
+    openCmd = `xdg-open "${localUrl}" >/dev/null 2>&1 || sensible-browser "${localUrl}" >/dev/null 2>&1 || true`;
+  }
+  exec(openCmd, () => {});
+}
+
 async function startServer() {
   const isRunning = await checkServerReady(3000);
   if (isRunning) {
     console.log('  ✓ Next.js server already running on port 3000.');
+    openLocalBrowser();
     return null;
   }
 
@@ -105,23 +123,6 @@ async function startServer() {
     windowsHide: true,
     env: { ...process.env, PORT: '3000' },
   });
-
-  let browserOpened = false;
-
-  function openLocalBrowser() {
-    if (browserOpened) return;
-    browserOpened = true;
-    const localUrl = 'http://localhost:3000';
-    let openCmd;
-    if (process.platform === 'win32') {
-      openCmd = `start "" "${localUrl}"`;
-    } else if (process.platform === 'darwin') {
-      openCmd = `open "${localUrl}"`;
-    } else {
-      openCmd = `xdg-open "${localUrl}" >/dev/null 2>&1 || sensible-browser "${localUrl}" >/dev/null 2>&1 || true`;
-    }
-    exec(openCmd, () => {});
-  }
 
   // Wait for server to respond
   let ready = false;
