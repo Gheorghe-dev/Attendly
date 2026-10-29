@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 title Attendly Container Server with Cloudflare
 color 0A
 
@@ -15,7 +16,7 @@ if %errorlevel% neq 0 (
     echo [ERROR] Docker is not installed or not in system PATH.
     echo Please install Docker Desktop: https://www.docker.com/products/docker-desktop/
     echo.
-    pause
+    ping 127.0.0.1 -n 5 >nul
     exit /b 1
 )
 
@@ -30,20 +31,20 @@ if %errorlevel% neq 0 (
         start "" "%LocalAppData%\Programs\Docker\Docker\Docker Desktop.exe"
     )
     
-    echo [*] Waiting for Docker engine to initialize (up to 60 seconds)...
+    echo [*] Waiting for Docker engine to initialize...
     set /a DOCKER_WAIT=0
     :WAIT_DOCKER
-    timeout /t 3 /nobreak >nul
+    ping 127.0.0.1 -n 3 >nul
     docker info >nul 2>&1
     if %errorlevel% equ 0 goto DOCKER_READY
     set /a DOCKER_WAIT+=3
     if !DOCKER_WAIT! geq 60 (
         color 0C
         echo [ERROR] Timed out waiting for Docker engine. Please ensure Docker Desktop is running.
-        pause
+        ping 127.0.0.1 -n 5 >nul
         exit /b 1
     )
-    echo    Waiting for Docker engine... (!DOCKER_WAIT!s)
+    echo    Waiting for Docker engine: !DOCKER_WAIT! seconds elapsed
     goto WAIT_DOCKER
 )
 
@@ -59,14 +60,14 @@ if not exist ".env" (
     )
 )
 
-:: 4. Build and start containers
+:: 4. Start containers
 echo [*] Starting Attendly application container and proxy...
-docker compose up -d --build
+docker compose up -d
 if %errorlevel% neq 0 (
     color 0C
     echo [ERROR] Failed to start Docker Compose services.
     echo Run 'docker compose logs' for more details.
-    pause
+    ping 127.0.0.1 -n 5 >nul
     exit /b 1
 )
 
@@ -81,7 +82,7 @@ for /l %%i in (1,1,30) do (
             goto TUNNEL_FOUND
         )
     )
-    timeout /t 2 /nobreak >nul
+    ping 127.0.0.1 -n 3 >nul
     <nul set /p =.
 )
 
@@ -104,7 +105,7 @@ echo.
 echo ================================================================================
 echo Useful Commands:
 echo   - View live logs:     docker compose logs -f
-echo   - Stop container:     docker compose down
+echo   - Stop container:     docker compose down -or- double-click Stop-Container.bat
 echo   - Rebuild container:  docker compose up -d --build
 echo ================================================================================
 echo.
@@ -116,5 +117,5 @@ if defined CF_URL (
     start "" "http://localhost"
 )
 
-echo Press any key to close this launcher window (container will continue running).
-pause >nul
+echo Container is running in background. Close this window anytime.
+ping 127.0.0.1 -n 3 >nul

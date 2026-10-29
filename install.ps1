@@ -1,7 +1,8 @@
 # ==============================================================================
 # Attendly — Automated Windows One-Command Deployment Installer
 # ==============================================================================
-# Requires Administrator privileges to configure Windows Firewall rules
+# Complete setup: Docker Engine, Container Server, Cloudflare Tunnel,
+# Windows Firewall rules, and Desktop Shortcuts with 1-click startup.
 # ==============================================================================
 
 [CmdletBinding()]
@@ -15,21 +16,28 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $ScriptDir
 
 # ------------------------------------------------------------------------------
-# 1. Administrator Elevation Check
+# 1. Administrator Elevation Check (Graceful fallback)
 # ------------------------------------------------------------------------------
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Host "[!] Administrator privileges required to configure firewall and network bindings." -ForegroundColor Yellow
-    Write-Host "[*] Requesting elevation..." -ForegroundColor Cyan
-    $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
-    if ($Port -gt 0) { $arguments = $arguments + " -Port $Port" }
-    if ($NonInteractive) { $arguments = $arguments + " -NonInteractive" }
-    Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments
-    exit
+    if (-not $NonInteractive) {
+        Write-Host "[!] Administrator privileges recommended to configure firewall and network bindings." -ForegroundColor Yellow
+        try {
+            Write-Host "[*] Attempting elevation..." -ForegroundColor Cyan
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+            if ($Port -gt 0) { $arguments = $arguments + " -Port $Port" }
+            Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments -ErrorAction Stop
+            exit
+        } catch {
+            Write-Host "[*] Continuing with current user privileges..." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[*] Running with current user privileges (-NonInteractive mode)..." -ForegroundColor Yellow
+    }
 }
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "       ATTENDLY -- AUTOMATED ONE-COMMAND INSTALLER       " -ForegroundColor Cyan
+Write-Host "       ATTENDLY -- ONE-COMMAND DOCKER INSTALLER         " -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -38,12 +46,12 @@ Write-Host ""
 # ------------------------------------------------------------------------------
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 $osName = (Get-CimInstance Win32_OperatingSystem).Caption
-Write-Host "[1/7] Detected Operating System: $osName ($arch)" -ForegroundColor Green
+Write-Host "[1/8] Detected Operating System: $osName ($arch)" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 3. Docker Daemon Verification and Guided Setup
+# 3. Docker Verification and Fully Automated Setup
 # ------------------------------------------------------------------------------
-Write-Host "[2/7] Checking Docker environment..." -ForegroundColor Cyan
+Write-Host "[2/8] Checking Docker environment..." -ForegroundColor Cyan
 
 function Test-DockerWorking {
     try {
@@ -57,28 +65,46 @@ function Test-DockerWorking {
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "[!] Docker CLI was not found on your system." -ForegroundColor Yellow
     
+    $installed = $false
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         Write-Host "[*] Installing Docker Desktop via Windows Package Manager (winget)..." -ForegroundColor Cyan
-        winget install Docker.DockerDesktop --accept-source-agreements --accept-package-agreements
-        Write-Host "[!] Docker Desktop installed. Please reboot if prompted, then re-run this script." -ForegroundColor Yellow
-    } else {
-        Write-Host "[ERROR] Docker Desktop is required to run Attendly." -ForegroundColor Red
-        Write-Host "Please download and install Docker Desktop from:" -ForegroundColor White
-        Write-Host "https://www.docker.com/products/docker-desktop/" -ForegroundColor Cyan
-        Start-Process "https://www.docker.com/products/docker-desktop/"
+        try {
+            winget install Docker.DockerDesktop --accept-source-agreements --accept-package-agreements --silent
+            if ($LASTEXITCODE -eq 0) { $installed = $true }
+        } catch {
+            Write-Host "      winget install encountered an issue: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
     }
-    
-    Write-Host "Press any key to exit..."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    exit 1
+
+    if (-not $installed) {
+        Write-Host "[*] Downloading official Docker Desktop installer..." -ForegroundColor Cyan
+        $installerUrl = "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
+        $installerPath = Join-Path $env:TEMP "DockerDesktopInstaller.exe"
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+            Write-Host "[*] Running silent installation of Docker Desktop..." -ForegroundColor Cyan
+            $proc = Start-Process -FilePath $installerPath -ArgumentList "install --quiet --accept-license" -Wait -PassThru
+            if ($proc.ExitCode -eq 0) { $installed = $true }
+            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+        } catch {
+            Write-Host "      Direct installer download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
+    # Refresh PATH environment variable in current session
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 }
 
 if (-not (Test-DockerWorking)) {
-    Write-Host "[*] Docker Desktop is installed but the Docker engine is not running." -ForegroundColor Yellow
+    Write-Host "[*] Starting Docker Desktop daemon..." -ForegroundColor Yellow
     
     $dockerExePath = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+    if (-not (Test-Path $dockerExePath)) {
+        $dockerExePath = "$env:LocalAppData\Programs\Docker\Docker\Docker Desktop.exe"
+    }
+    
     if (Test-Path $dockerExePath) {
-        Write-Host "[*] Starting Docker Desktop daemon..." -ForegroundColor Cyan
         Start-Process $dockerExePath
     } else {
         Write-Host "[*] Please start Docker Desktop from your Start Menu." -ForegroundColor Yellow
@@ -106,7 +132,7 @@ Write-Host "      Docker engine is active and ready." -ForegroundColor Green
 # ------------------------------------------------------------------------------
 # 4. Local Wi-Fi and LAN IPv4 Network Detection
 # ------------------------------------------------------------------------------
-Write-Host "[3/7] Detecting local Wi-Fi / LAN IP address..." -ForegroundColor Cyan
+Write-Host "[3/8] Detecting local Wi-Fi / LAN IP address..." -ForegroundColor Cyan
 
 $lanIp = "127.0.0.1"
 $netAdapters = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -114,7 +140,7 @@ $netAdapters = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinu
         $_.IPAddress -notlike "127.*" -and 
         $_.IPAddress -notlike "169.254.*" -and 
         $_.IPAddress -notlike "172.17.*" -and 
-        $_.IPAddress -notlike "172.18.*" -and
+        $_.IPAddress -notlike "172.18.*" -and 
         $_.IPAddress -notlike "172.19.*"
     } |
     Sort-Object -Property @{Expression = { if ($_.InterfaceAlias -like "*Wi-Fi*") { 1 } elseif ($_.InterfaceAlias -like "*Ethernet*") { 2 } else { 3 } }}
@@ -129,7 +155,7 @@ if ($netAdapters -and $netAdapters.Count -gt 0) {
 # ------------------------------------------------------------------------------
 # 5. Port Conflict Detection and Selection
 # ------------------------------------------------------------------------------
-Write-Host "[4/7] Checking reverse proxy port availability..." -ForegroundColor Cyan
+Write-Host "[4/8] Checking reverse proxy port availability..." -ForegroundColor Cyan
 
 function Test-PortOccupied([int]$testPort) {
     $connection = Get-NetTCPConnection -LocalPort $testPort -ErrorAction SilentlyContinue
@@ -170,7 +196,7 @@ if ($portStatus.Occupied) {
 # ------------------------------------------------------------------------------
 # 6. Environment (.env) Configuration and Secret Generation
 # ------------------------------------------------------------------------------
-Write-Host "[5/7] Configuring environment variables (.env)..." -ForegroundColor Cyan
+Write-Host "[5/8] Configuring environment variables (.env)..." -ForegroundColor Cyan
 
 $envFile = Join-Path $ScriptDir ".env"
 $envExample = Join-Path $ScriptDir ".env.example"
@@ -179,7 +205,7 @@ if (-not (Test-Path $envFile)) {
     if (Test-Path $envExample) {
         Copy-Item $envExample $envFile
     } else {
-        $defaultEnv = "PROXY_PORT=80`nNEXTAUTH_SECRET=`nNEXTAUTH_URL=http://localhost`nAPP_URL=http://localhost"
+        $defaultEnv = "PROXY_PORT=80`nAPP_PORT=3000`nNEXTAUTH_SECRET=`nNEXTAUTH_URL=http://localhost`nAPP_URL=http://localhost`nCLOUDFLARE_TUNNEL_ACTIVE=true"
         Set-Content -Path $envFile -Value $defaultEnv
     }
 }
@@ -217,40 +243,50 @@ $envContent = $envContent -replace 'PROXY_PORT=.*', "PROXY_PORT=$targetPort"
 $envContent = $envContent -replace 'NEXTAUTH_URL=.*', "NEXTAUTH_URL=$displayUrl"
 $envContent = $envContent -replace 'APP_URL=.*', "APP_URL=$displayUrl"
 
+if ($envContent -notmatch 'CLOUDFLARE_TUNNEL_ACTIVE') {
+    $envContent = $envContent + "`nCLOUDFLARE_TUNNEL_ACTIVE=true"
+}
+
 Set-Content -Path $envFile -Value $envContent.Trim() -NoNewline
 Write-Host "      Environment settings synchronized." -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
 # 7. Windows Defender Firewall Rule Configuration
 # ------------------------------------------------------------------------------
-Write-Host "[6/7] Configuring Windows Defender Firewall for local Wi-Fi traffic..." -ForegroundColor Cyan
+Write-Host "[6/8] Configuring Windows Defender Firewall for local Wi-Fi traffic..." -ForegroundColor Cyan
 
-$ruleName = "Attendly Web Proxy (Port $targetPort)"
-$existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
-if (-not $existingRule) {
-    try {
-        $firewallParams = @{
-            DisplayName = $ruleName
-            Direction   = "Inbound"
-            LocalPort   = $targetPort
-            Protocol    = "TCP"
-            Action      = "Allow"
-            Profile     = "Any"
-            Description = "Allows incoming local Wi-Fi mobile connections for Attendly"
+$rules = @(
+    @{ Name = "Attendly Web Proxy (Port $targetPort)"; Port = $targetPort },
+    @{ Name = "Attendly App Direct (Port 3000)"; Port = 3000 }
+)
+
+foreach ($r in $rules) {
+    $existing = Get-NetFirewallRule -DisplayName $r.Name -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        try {
+            $firewallParams = @{
+                DisplayName = $r.Name
+                Direction   = "Inbound"
+                LocalPort   = $r.Port
+                Protocol    = "TCP"
+                Action      = "Allow"
+                Profile     = "Any"
+                Description = "Allows incoming local Wi-Fi mobile connections for Attendly"
+            }
+            New-NetFirewallRule @firewallParams | Out-Null
+            Write-Host "      Created Windows Firewall rule: $($r.Name)" -ForegroundColor Green
+        } catch {
+            Write-Host "      [!] Could not add firewall rule for $($r.Name): $($_.Exception.Message)" -ForegroundColor Yellow
         }
-        New-NetFirewallRule @firewallParams | Out-Null
-        Write-Host "      Created Windows Firewall rule: $ruleName" -ForegroundColor Green
-    } catch {
-        Write-Host "      [!] Could not automatically add firewall rule: $($_.Exception.Message)" -ForegroundColor Yellow
+    } else {
+        Write-Host "      Windows Firewall rule already active: $($r.Name)" -ForegroundColor Green
     }
-} else {
-    Write-Host "      Windows Firewall rule already active." -ForegroundColor Green
 }
 
 # ------------------------------------------------------------------------------
 # 8. Service Deployment via Docker Compose
 # ------------------------------------------------------------------------------
-Write-Host "[7/7] Launching application and reverse proxy via Docker Compose..." -ForegroundColor Cyan
+Write-Host "[7/8] Launching application and reverse proxy via Docker Compose..." -ForegroundColor Cyan
 
 try {
     docker compose up -d --build
@@ -264,7 +300,49 @@ try {
 }
 
 # ------------------------------------------------------------------------------
-# 9. End-to-End Health Verification
+# 9. Create Desktop & Start Menu Shortcuts
+# ------------------------------------------------------------------------------
+Write-Host "[8/8] Creating Desktop and Start Menu shortcuts..." -ForegroundColor Cyan
+
+try {
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $programsPath = [Environment]::GetFolderPath("Programs")
+    $wsh = New-Object -ComObject WScript.Shell
+    $iconPath = Join-Path $ScriptDir "attendly.ico"
+
+    # Start shortcut on Desktop
+    $scDesk = $wsh.CreateShortcut((Join-Path $desktopPath "Attendly.lnk"))
+    $scDesk.TargetPath = (Join-Path $ScriptDir "Start-Container.bat")
+    $scDesk.WorkingDirectory = $ScriptDir
+    $scDesk.Description = "Launch Attendly Container Server with Cloudflare"
+    if (Test-Path $iconPath) { $scDesk.IconLocation = $iconPath }
+    $scDesk.Save()
+
+    # Stop shortcut on Desktop
+    $scStop = $wsh.CreateShortcut((Join-Path $desktopPath "Stop Attendly.lnk"))
+    $scStop.TargetPath = (Join-Path $ScriptDir "Stop-Container.bat")
+    $scStop.WorkingDirectory = $ScriptDir
+    $scStop.Description = "Stop Attendly Container Server"
+    if (Test-Path $iconPath) { $scStop.IconLocation = $iconPath }
+    $scStop.Save()
+
+    # Start Menu shortcut
+    if (Test-Path $programsPath) {
+        $scMenu = $wsh.CreateShortcut((Join-Path $programsPath "Attendly.lnk"))
+        $scMenu.TargetPath = (Join-Path $ScriptDir "Start-Container.bat")
+        $scMenu.WorkingDirectory = $ScriptDir
+        $scMenu.Description = "Attendly Academic Attendance System"
+        if (Test-Path $iconPath) { $scMenu.IconLocation = $iconPath }
+        $scMenu.Save()
+    }
+    Write-Host "      Created Desktop shortcut: 'Attendly' (1-click start & browser launch)" -ForegroundColor Green
+    Write-Host "      Created Desktop shortcut: 'Stop Attendly' (1-click clean stop)" -ForegroundColor Green
+} catch {
+    Write-Host "      [!] Could not create desktop shortcut automatically: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+# ------------------------------------------------------------------------------
+# 10. End-to-End Health Verification & Cloudflare Handshake
 # ------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
@@ -326,8 +404,16 @@ if ($cfUrl) {
 Write-Host "  Local Computer:                $displayUrl" -ForegroundColor Cyan
 Write-Host "  Local Wi-Fi Network:           $displayUrl" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "Desktop Shortcuts:" -ForegroundColor White
+Write-Host "  - Double-click 'Attendly' on your Desktop anytime to start the app!" -ForegroundColor Cyan
+Write-Host "  - Double-click 'Stop Attendly' on your Desktop to stop the container server." -ForegroundColor Yellow
+Write-Host ""
 Write-Host "Useful Commands:" -ForegroundColor White
 Write-Host "  View Live Logs:   docker compose logs -f" -ForegroundColor Gray
 Write-Host "  Stop Containers:  docker compose down" -ForegroundColor Gray
 Write-Host "  Update / Rebuild: docker compose up -d --build" -ForegroundColor Gray
 Write-Host "========================================================" -ForegroundColor Green
+
+# Automatically open browser
+$openUrl = if ($cfUrl) { $cfUrl } else { $displayUrl }
+Start-Process $openUrl
