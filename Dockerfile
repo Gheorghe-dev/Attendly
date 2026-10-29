@@ -1,14 +1,14 @@
 # ==============================================================================
 # Attendly — Production Dockerfile
-# Multi-stage optimized build for universal deployment (Linux, macOS, Windows)
+# Optimized multi-stage build for universal deployment (Windows, macOS, Linux)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 1. Base Image
+# 1. Base Image with Alpine Linux & Required Prisma Native Libraries
 # ------------------------------------------------------------------------------
-FROM node:24-alpine AS base
+FROM node:20-alpine AS base
 WORKDIR /app
-RUN apk add --no-cache libc6-compat openssl
+RUN apk add --no-cache libc6-compat openssl curl
 
 # ------------------------------------------------------------------------------
 # 2. Dependencies Stage
@@ -25,7 +25,7 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV DATABASE_URL=file:./dev.db
-ENV NEXTAUTH_SECRET=attendly-build-only-placeholder
+ENV NEXTAUTH_SECRET=attendly-build-only-placeholder-key-32b
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 RUN npx prisma generate
@@ -52,6 +52,9 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/docker-entrypoint.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Persistent directory for SQLite database storage
+RUN mkdir -p /app/prisma && chown -R node:node /app/prisma
 
 EXPOSE 3000
 

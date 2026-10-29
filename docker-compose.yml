@@ -1,22 +1,52 @@
+# ==============================================================================
+# Attendly — Production Docker Compose with Local Wi-Fi Reverse Proxy
+# ==============================================================================
 services:
   attendly:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: attendly
+    container_name: attendly-app
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     environment:
       PORT: 3000
+      HOSTNAME: "0.0.0.0"
       NODE_ENV: production
       DATABASE_URL: file:./dev.db
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?Set NEXTAUTH_SECRET in .env before starting Docker Compose}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      AUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
       AUTH_TRUST_HOST: "true"
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost}
     volumes:
       - attendly-data:/app/prisma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - attendly-net
+
+  proxy:
+    image: nginx:alpine
+    container_name: attendly-proxy
+    restart: unless-stopped
+    ports:
+      - "${PROXY_PORT:-80}:80"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      attendly:
+        condition: service_healthy
+    networks:
+      - attendly-net
 
 volumes:
   attendly-data:
+    name: attendly-sqlite-data
+
+networks:
+  attendly-net:
+    driver: bridge
