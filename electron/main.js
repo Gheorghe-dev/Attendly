@@ -3,33 +3,27 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
-const { spawn, exec, execSync } = require('child_process');
+const os = require('os');
+const { spawn, execSync } = require('child_process');
 
-// Set Application Name and Windows User Model ID early
+// ── Application Identity & Stability ──────────────────────────────────────────
 app.setName('Attendly');
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.attendly.app');
 }
 
-// Disable hardware acceleration to eliminate Windows/Linux GPU process crashes
+// Eliminate GPU crashes and unhandled error popups
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
-app.commandLine.appendSwitch('disable-gpu-compositing');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('no-sandbox');
 
-// Catch unhandled errors gracefully to eliminate error dialog popups
-process.on('uncaughtException', (err) => {
-  console.error('[Electron] Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Electron] Unhandled Rejection at:', promise, 'reason:', reason);
-});
+process.on('uncaughtException', (err) => console.error('[Electron] Uncaught Exception:', err));
+process.on('unhandledRejection', (reason) => console.error('[Electron] Unhandled Rejection:', reason));
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 let PORT = Number(process.env.PORT) || 3000;
 let SERVER_URL = `http://127.0.0.1:${PORT}`;
-let globalServerCwd = null;
 
 function getUserDataDir() {
   try {
@@ -41,6 +35,24 @@ function getUserDataDir() {
 
 const TUNNEL_FILE = path.join(getUserDataDir(), '.tunnel_url');
 
+// Single instance lock
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createMainWindow();
+    }
+  });
+}
+
+// ── Database Path Resolution ──────────────────────────────────────────────────
 function getDatabaseUrl() {
   const userData = getUserDataDir();
   if (!fs.existsSync(userData)) {
@@ -49,7 +61,7 @@ function getDatabaseUrl() {
   const targetDb = path.join(userData, 'attendly.db');
   const repoDb = path.join(ROOT_DIR, 'prisma', 'dev.db');
 
-  // If running in development / repo workspace, sync between repo dev.db and userData attendly.db
+  // In development, keep repo dev.db and userData synced
   if (fs.existsSync(repoDb) && !app.isPackaged) {
     try {
       if (fs.existsSync(targetDb)) {
@@ -67,12 +79,11 @@ function getDatabaseUrl() {
     return `file:${repoDb.replace(/\\/g, '/')}`;
   }
 
-  // Check if database does not exist OR is empty / corrupted (less than 4KB)
+  // In production, seed user database if missing or empty
   let needSeed = !fs.existsSync(targetDb);
   if (!needSeed) {
     try {
-      const stat = fs.statSync(targetDb);
-      if (stat.size < 4096) needSeed = true;
+      if (fs.statSync(targetDb).size < 4096) needSeed = true;
     } catch {
       needSeed = true;
     }
@@ -81,33 +92,27 @@ function getDatabaseUrl() {
   if (needSeed) {
     const candidates = [
       path.join(process.resourcesPath || '', 'prisma', 'template.db'),
-      path.join(process.resourcesPath || '', 'prisma', 'dev.db'),
       path.join(process.resourcesPath || '', 'standalone', 'prisma', 'template.db'),
-      path.join(process.resourcesPath || '', 'standalone', 'prisma', 'dev.db'),
       path.join(ROOT_DIR, 'prisma', 'template.db'),
       path.join(ROOT_DIR, 'prisma', 'dev.db'),
     ];
     for (const c of candidates) {
       if (fs.existsSync(c)) {
         try {
-          const stat = fs.statSync(c);
-          if (stat.size > 4096) {
+          if (fs.statSync(c).size > 4096) {
             fs.copyFileSync(c, targetDb);
-            console.log('[Electron] Initialized user database from', c);
+            console.log('[Electron] Initialized database from', c);
             break;
           }
-        } catch (e) {
-          console.warn('[Electron] Could not seed database from', c, e.message);
-        }
+        } catch {}
       }
     }
   }
 
-  // Cross-platform SQLite URL with normalized forward slashes
-  const normalizedDb = targetDb.replace(/\\/g, '/');
-  return `file:${normalizedDb}`;
+  return `file:${targetDb.replace(/\\/g, '/')}`;
 }
 
+// ── State Variables ───────────────────────────────────────────────────────────
 let mainWindow = null;
 let splashWindow = null;
 let tray = null;
@@ -115,82 +120,19 @@ let serverProcess = null;
 let tunnelProcess = null;
 let tunnelUrl = null;
 let isQuitting = false;
+let startedDockerCompose = false;
 
-// Ensure single instance lock
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-  process.exit(0);
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createMainWindow();
-    }
-  });
-}
-
-function checkServerReady(portOrTimeout, timeoutMs = 1500) {
-  let targetPort = PORT;
-  let tMs = timeoutMs;
-  if (typeof portOrTimeout === 'number') {
-    if (portOrTimeout < 1000) {
-      tMs = portOrTimeout;
-    } else {
-      targetPort = portOrTimeout;
-    }
-  }
+// ── Port & Server Readiness ───────────────────────────────────────────────────
+function checkServerReady(port = PORT, timeoutMs = 1200) {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${targetPort}/api/health`, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
       resolve(res.statusCode === 200 || res.statusCode === 307 || res.statusCode === 302);
     });
     req.on('error', () => resolve(false));
-    req.setTimeout(tMs, () => {
+    req.setTimeout(timeoutMs, () => {
       req.destroy();
       resolve(false);
     });
-  });
-}
-
-function freePort(port = PORT) {
-  return new Promise((resolve) => {
-    try {
-      if (process.platform === 'win32') {
-        const proc = spawn(
-          'powershell.exe',
-          [
-            '-NoProfile',
-            '-NonInteractive',
-            '-WindowStyle',
-            'Hidden',
-            '-Command',
-            `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }`,
-          ],
-          {
-            windowsHide: true,
-            shell: false,
-            stdio: 'ignore',
-          }
-        );
-        proc.on('close', () => resolve());
-        proc.on('error', () => resolve());
-        setTimeout(() => {
-          try { proc.kill(); } catch {}
-          resolve();
-        }, 1500);
-      } else {
-        exec(
-          `lsof -ti:${port} | xargs kill -9 > /dev/null 2>&1 || fuser -k ${port}/tcp >/dev/null 2>&1 || true`,
-          { windowsHide: true },
-          () => resolve()
-        );
-      }
-    } catch {
-      resolve();
-    }
   });
 }
 
@@ -198,49 +140,29 @@ function isPortAvailable(port) {
   return new Promise((resolve) => {
     const tester = net.createServer();
     tester.once('error', () => resolve(false));
-    tester.once('listening', () => {
-      tester.close(() => resolve(true));
-    });
+    tester.once('listening', () => tester.close(() => resolve(true)));
     tester.listen(port, '127.0.0.1');
   });
 }
 
 async function resolveUsablePort(preferredPort = 3000) {
-  // If Attendly is already responding on preferredPort, keep it
-  const isRunning = await checkServerReady(preferredPort, 400);
-  if (isRunning) return preferredPort;
+  if (await checkServerReady(preferredPort, 400)) return preferredPort;
+  if (await isPortAvailable(preferredPort)) return preferredPort;
 
-  // Check if preferred port is already available before trying to free anything
-  const available = await isPortAvailable(preferredPort);
-  if (available) return preferredPort;
-
-  // Only try freeing if preferred port is actually occupied
-  await freePort(preferredPort);
-  const nowAvailable = await isPortAvailable(preferredPort);
-  if (nowAvailable) return preferredPort;
-
-  // Search next available ports if preferred port remains blocked
   for (let p = preferredPort + 1; p <= preferredPort + 20; p++) {
-    const pRunning = await checkServerReady(p, 300);
-    if (pRunning) return p;
-    const isAvail = await isPortAvailable(p);
-    if (isAvail) {
-      console.log(`[Electron] Port ${preferredPort} is busy. Switched to port ${p}`);
+    if (await checkServerReady(p, 300) || await isPortAvailable(p)) {
+      console.log(`[Electron] Port ${preferredPort} busy; using port ${p}`);
       return p;
     }
   }
   return preferredPort;
 }
 
+// ── Next.js Server Process ────────────────────────────────────────────────────
 async function startServer() {
-  const isRunning = await checkServerReady(PORT);
-  if (isRunning) {
-    console.log('[Electron] Server already running on port', PORT);
-    return null;
-  }
+  if (await checkServerReady(PORT)) return null;
 
-  console.log('[Electron] Starting Next.js server on port', PORT);
-
+  console.log('[Electron] Launching server on port', PORT);
   const dbUrl = getDatabaseUrl();
 
   let serverScript;
@@ -268,26 +190,11 @@ async function startServer() {
     }
   }
 
-  console.log('[Electron] Launching server with script:', serverScript);
-  globalServerCwd = serverCwd;
-
-  // Ensure NextAuth has a persistent, secure secret across app launches
+  // Persistent auth secret
   const secretFile = path.join(getUserDataDir(), '.auth_secret');
   let authSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!authSecret) {
-    const envFile = path.join(ROOT_DIR, '.env');
-    if (fs.existsSync(envFile)) {
-      try {
-        const envText = fs.readFileSync(envFile, 'utf-8');
-        const match = envText.match(/^(?:AUTH_SECRET|NEXTAUTH_SECRET)=["']?([^"'\r\n]+)["']?/m);
-        if (match && match[1]) authSecret = match[1].trim();
-      } catch {}
-    }
-  }
-  if (!authSecret) {
-    if (fs.existsSync(secretFile)) {
-      try { authSecret = fs.readFileSync(secretFile, 'utf-8').trim(); } catch {}
-    }
+  if (!authSecret && fs.existsSync(secretFile)) {
+    try { authSecret = fs.readFileSync(secretFile, 'utf-8').trim(); } catch {}
   }
   if (!authSecret || authSecret.length < 16) {
     authSecret = 'attendly-app-secure-default-encryption-secret-32-bytes';
@@ -306,18 +213,14 @@ async function startServer() {
       NEXTAUTH_SECRET: authSecret,
       AUTH_SECRET: authSecret,
       AUTH_TRUST_HOST: 'true',
-      ELECTRON_RUN_AS_NODE: '1', // Uses Electron's built-in Node runtime!
+      ELECTRON_RUN_AS_NODE: '1',
     },
   });
 
-  proc.on('error', (err) => {
-    console.error('[Electron] Next.js server failed to spawn:', err);
-  });
+  proc.on('error', (err) => console.error('[Electron] Server spawn error:', err));
 
-  // Pipe stdout and stderr to persistent log file in userData
   try {
-    const logFile = path.join(getUserDataDir(), 'server.log');
-    const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+    const logStream = fs.createWriteStream(path.join(getUserDataDir(), 'server.log'), { flags: 'a' });
     proc.stdout?.pipe(logStream);
     proc.stderr?.pipe(logStream);
   } catch {}
@@ -329,26 +232,12 @@ async function startServer() {
     }
   });
 
-  proc.stderr?.on('data', (d) => {
-    console.error('[Next.js stderr]:', d.toString());
-  });
-
   return proc;
 }
 
+// ── Cloudflare Worldwide Tunnel ───────────────────────────────────────────────
 function startCloudflareTunnel() {
-  try {
-    if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE);
-  } catch {}
-
-  // Clean up any stale tunnel process synchronously before starting new one
-  try {
-    if (process.platform === 'win32') {
-      execSync('taskkill /F /IM cloudflared.exe >nul 2>&1', { windowsHide: true, stdio: 'ignore' });
-    } else {
-      execSync('killall cloudflared >/dev/null 2>&1 || true', { stdio: 'ignore' });
-    }
-  } catch {}
+  try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
 
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared';
   const candidateBins = [
@@ -357,199 +246,128 @@ function startCloudflareTunnel() {
     path.join(ROOT_DIR, 'bin', binName),
   ];
 
-  let localBin = null;
-  for (const b of candidateBins) {
-    if (fs.existsSync(b)) {
-      localBin = b;
-      break;
-    }
-  }
-
-  // Self-healing download fallback if binary is not yet present
-  if (!localBin) {
-    try {
-      const userBinDir = path.join(getUserDataDir(), 'bin');
-      const targetBin = path.join(userBinDir, binName);
-      if (!fs.existsSync(userBinDir)) fs.mkdirSync(userBinDir, { recursive: true });
-
-      console.log('[Electron] Bundled binary not detected. Fetching cloudflared for', process.platform, process.arch);
-      if (process.platform === 'win32') {
-        execSync(`curl.exe -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -o "${targetBin}"`, { windowsHide: true, timeout: 35000 });
-      } else if (process.platform === 'darwin') {
-        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-        execSync(`curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-${arch}.tgz" -o /tmp/cf_attendly.tgz && tar -xzf /tmp/cf_attendly.tgz -C "${userBinDir}" && rm -f /tmp/cf_attendly.tgz`, { timeout: 35000 });
-      } else if (process.platform === 'linux') {
-        execSync(`curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "${targetBin}"`, { timeout: 35000 });
-      }
-
-      if (fs.existsSync(targetBin)) {
-        if (process.platform !== 'win32') {
-          try { fs.chmodSync(targetBin, 0o755); } catch {}
-        }
-        localBin = targetBin;
-        console.log('[Electron] Self-healing download complete:', localBin);
-      }
-    } catch (dlErr) {
-      console.warn('[Electron] Self-healing cloudflared download could not be completed:', dlErr.message);
-    }
-  }
+  let localBin = candidateBins.find((b) => fs.existsSync(b));
 
   let proc = null;
   try {
     if (localBin) {
       if (process.platform !== 'win32') {
         try { fs.chmodSync(localBin, 0o755); } catch {}
-      } else {
-        try {
-          execSync(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${localBin}' -ErrorAction SilentlyContinue"`, { windowsHide: true, stdio: 'ignore' });
-        } catch {}
       }
-      console.log('[Electron] Launching bundled Cloudflare binary:', localBin);
       proc = spawn(localBin, ['tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {
         cwd: getUserDataDir(),
         shell: false,
         windowsHide: true,
       });
     } else if (!app.isPackaged) {
-      // In development only, allow falling back to npx
       const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate', '--protocol', 'http2'], {
+      proc = spawn(cmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${PORT}`, '--no-autoupdate'], {
         cwd: getUserDataDir(),
         shell: true,
         windowsHide: true,
       });
-    } else {
-      console.warn('[Electron] Cloudflare binary not bundled; tunnel inactive.');
-      return null;
     }
 
     if (proc) {
-      proc.on('error', (err) => {
-        console.warn('[Electron] Cloudflare tunnel process error:', err.message);
-      });
-
-      // Pipe tunnel output to persistent tunnel.log in userData for complete transparency
-      try {
-        const tunnelLog = path.join(getUserDataDir(), 'tunnel.log');
-        const tunnelStream = fs.createWriteStream(tunnelLog, { flags: 'a' });
-        proc.stdout?.pipe(tunnelStream);
-        proc.stderr?.pipe(tunnelStream);
-      } catch {}
-
       let outputBuffer = '';
       function handleData(data) {
-        const str = data.toString();
-        outputBuffer += str;
+        outputBuffer += data.toString();
         const match = outputBuffer.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
         if (match && !tunnelUrl) {
-          const rawUrl = match[0];
-          tunnelUrl = rawUrl;
-          console.log('[Electron] Cloudflare Worldwide Tunnel active for QR scans:', tunnelUrl);
+          tunnelUrl = match[0];
+          console.log('[Electron] Cloudflare Worldwide Tunnel active:', tunnelUrl);
 
-          // 1. Write to userData and common discovery paths
-          const candidatePaths = [
+          const syncPaths = [
             TUNNEL_FILE,
-            path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
-            path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
+            path.join(os.tmpdir(), '.attendly_tunnel'),
             path.join(ROOT_DIR, '.tunnel_url'),
           ];
-          if (globalServerCwd) {
-            candidatePaths.push(path.join(globalServerCwd, '.tunnel_url'));
-          }
-          if (process.resourcesPath) {
-            candidatePaths.push(path.join(process.resourcesPath, 'standalone', '.tunnel_url'));
-            candidatePaths.push(path.join(process.resourcesPath, 'bin', '.tunnel_url'));
+          for (const p of syncPaths) {
+            try { fs.writeFileSync(p, tunnelUrl, 'utf-8'); } catch {}
           }
 
-          for (const targetPath of candidatePaths) {
-            try {
-              fs.writeFileSync(targetPath, tunnelUrl, 'utf-8');
-            } catch {}
-          }
-
-          // 2. Notify Next.js server via HTTP POST with automatic retry
-          const notifyNextServer = (retries = 6) => {
-            try {
-              const postData = JSON.stringify({ url: tunnelUrl });
-              const req = http.request(
-                `http://127.0.0.1:${PORT}/api/tunnel`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData),
-                  },
-                  timeout: 2000,
-                },
-                (res) => {
-                  if (res.statusCode !== 200 && retries > 0) {
-                    setTimeout(() => notifyNextServer(retries - 1), 1000);
-                  }
-                }
-              );
-              req.on('error', () => {
-                if (retries > 0) setTimeout(() => notifyNextServer(retries - 1), 1000);
-              });
-              req.write(postData);
-              req.end();
-            } catch {}
-          };
-          notifyNextServer();
+          // Notify Next.js server
+          try {
+            const postData = JSON.stringify({ url: tunnelUrl });
+            const req = http.request(`http://127.0.0.1:${PORT}/api/tunnel`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
+              timeout: 2000,
+            });
+            req.on('error', () => {});
+            req.write(postData);
+            req.end();
+          } catch {}
 
           updateTrayMenu();
           if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setTitle(`Attendly — 🌍 Accessible on any Wi-Fi & 4G/5G`);
+            mainWindow.setTitle('Attendly — 🌍 Accessible on any Wi-Fi & 4G/5G');
           }
         }
       }
 
       proc.stdout?.on('data', handleData);
       proc.stderr?.on('data', handleData);
-
-      proc.on('close', (code) => {
-        console.warn(`[Electron] Cloudflare tunnel process exited with code ${code}`);
+      proc.on('close', () => {
         tunnelUrl = null;
         try { if (fs.existsSync(TUNNEL_FILE)) fs.unlinkSync(TUNNEL_FILE); } catch {}
-        try {
-          const postData = JSON.stringify({ url: null });
-          const req = http.request(`http://127.0.0.1:${PORT}/api/tunnel`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(postData),
-            },
-            timeout: 1000,
-          });
-          req.on('error', () => {});
-          req.write(postData);
-          req.end();
-        } catch {}
         updateTrayMenu();
       });
     }
   } catch (err) {
-    console.warn('[Electron] Could not launch tunnel:', err.message);
-    proc = null;
+    console.warn('[Electron] Tunnel launch error:', err.message);
   }
 
   return proc;
 }
 
+// ── Docker Lifecycle ──────────────────────────────────────────────────────────
+function isDockerEngineRunning() {
+  try {
+    execSync('docker info', { stdio: 'ignore', timeout: 1200, windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureDockerCompose() {
+  const composePath = path.join(ROOT_DIR, 'docker-compose.yml');
+  if (!fs.existsSync(composePath) || !isDockerEngineRunning()) return false;
+
+  try {
+    console.log('[Electron] Docker Engine detected. Ensuring containers are running...');
+    execSync('docker compose up -d', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 10000, windowsHide: true });
+    startedDockerCompose = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function stopDockerCompose() {
+  if (startedDockerCompose) {
+    try {
+      console.log('[Electron] Stopping Docker Compose containers on exit...');
+      execSync('docker compose down', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 8000, windowsHide: true });
+      startedDockerCompose = false;
+    } catch {}
+  }
+}
+
+// ── Window Management & UI ────────────────────────────────────────────────────
 function getAppIcon() {
-  const possiblePaths = [
+  const iconCandidates = [
     path.join(ROOT_DIR, 'attendly.ico'),
     path.join(ROOT_DIR, 'public', 'emblem.png'),
     path.join(ROOT_DIR, 'src', 'app', 'favicon.ico'),
-    path.join(ROOT_DIR, 'src', 'app', 'icon.png'),
   ];
-  for (const p of possiblePaths) {
+  for (const p of iconCandidates) {
     if (fs.existsSync(p)) {
       try {
         const img = nativeImage.createFromPath(p);
         if (!img.isEmpty()) return img;
-      } catch (err) {
-        console.warn('[Electron] Could not load icon from', p, err.message);
-      }
+      } catch {}
     }
   }
   return undefined;
@@ -562,7 +380,6 @@ function createSplashWindow() {
     frame: false,
     resizable: false,
     center: true,
-    transparent: false,
     alwaysOnTop: true,
     title: 'Attendly',
     icon: getAppIcon(),
@@ -573,26 +390,14 @@ function createSplashWindow() {
   });
 
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
-  splashWindow.on('closed', () => {
-    splashWindow = null;
-  });
+  splashWindow.on('closed', () => { splashWindow = null; });
 }
 
 function sendSplashStatus(message) {
   if (!splashWindow || splashWindow.isDestroyed()) return;
-  if (splashWindow.webContents.isLoading()) {
-    splashWindow.webContents.once('did-finish-load', () => {
-      if (splashWindow && !splashWindow.isDestroyed()) {
-        try {
-          splashWindow.webContents.send('status-update', message);
-        } catch {}
-      }
-    });
-  } else {
-    try {
-      splashWindow.webContents.send('status-update', message);
-    } catch {}
-  }
+  try {
+    splashWindow.webContents.send('status-update', message);
+  } catch {}
 }
 
 function createMainWindow() {
@@ -626,45 +431,25 @@ function createMainWindow() {
       splashWindow = null;
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
-      if (!mainWindow.isVisible()) {
-        mainWindow.show();
-      }
+      if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
     }
   };
 
   mainWindow.once('ready-to-show', showMainWindow);
   mainWindow.webContents.once('did-finish-load', showMainWindow);
+  setTimeout(showMainWindow, 3500); // Failsafe
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.warn(`[Electron] did-fail-load: ${errorCode} ${errorDescription} on ${validatedURL}`);
-    setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.loadURL(SERVER_URL);
-      }
-    }, 1000);
-  });
+  const isInternal = (url) => url && (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1'));
 
-  // Failsafe: if neither ready-to-show nor did-finish-load fired within 3.5s, force show
-  setTimeout(showMainWindow, 3500);
-
-  const isAllowedInternal = (url) => {
-    if (!url) return false;
-    if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return true;
-    return false;
-  };
-
-  // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedInternal(url)) {
-      return { action: 'allow' };
-    }
+    if (isInternal(url)) return { action: 'allow' };
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!isAllowedInternal(url)) {
+    if (!isInternal(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
@@ -701,16 +486,6 @@ function buildNativeMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Copy Student Attendance Link (Cloudflare)',
-          click: () => {
-            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
-            if (url) {
-              const { clipboard } = require('electron');
-              clipboard.writeText(url);
-            }
-          },
-        },
-        {
           label: 'Open Dashboard in Web Browser',
           click: () => shell.openExternal(SERVER_URL),
         },
@@ -721,25 +496,16 @@ function buildNativeMenu() {
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
       ],
     },
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
+        { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
       ],
@@ -750,18 +516,16 @@ function buildNativeMenu() {
         {
           label: 'Copy Public Tunnel URL',
           click: () => {
-            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
-            if (url) {
+            if (tunnelUrl) {
               const { clipboard } = require('electron');
-              clipboard.writeText(url);
+              clipboard.writeText(tunnelUrl);
             }
           },
         },
         {
           label: 'Open Tunnel in Browser',
           click: () => {
-            const url = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
-            if (url) shell.openExternal(url);
+            if (tunnelUrl) shell.openExternal(tunnelUrl);
           },
         },
         { type: 'separator' },
@@ -788,11 +552,6 @@ function buildNativeMenu() {
           },
         },
         {
-          label: 'Open App Directory',
-          click: () => shell.openPath(ROOT_DIR),
-        },
-        { type: 'separator' },
-        {
           label: 'About Attendly',
           click: () => {
             const { dialog } = require('electron');
@@ -808,14 +567,12 @@ function buildNativeMenu() {
     },
   ];
 
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function updateTrayMenu() {
   if (!tray) return;
-
-  const currentTunnel = tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
+  const currentTunnel = tunnelUrl;
 
   const contextMenu = Menu.buildFromTemplate([
     { label: '🎓 Attendly Desktop', enabled: false },
@@ -823,19 +580,7 @@ function updateTrayMenu() {
     {
       label: currentTunnel ? `🌍 Public: ${currentTunnel}` : '🌍 Connecting Worldwide Tunnel…',
       enabled: Boolean(currentTunnel),
-      click: () => {
-        if (currentTunnel) shell.openExternal(currentTunnel);
-      },
-    },
-    {
-      label: 'Copy Public Access Link',
-      enabled: Boolean(currentTunnel),
-      click: () => {
-        if (currentTunnel) {
-          const { clipboard } = require('electron');
-          clipboard.writeText(currentTunnel);
-        }
-      },
+      click: () => { if (currentTunnel) shell.openExternal(currentTunnel); },
     },
     { type: 'separator' },
     {
@@ -850,14 +595,6 @@ function updateTrayMenu() {
       },
     },
     {
-      label: 'Open in Default Browser',
-      click: () => {
-        const url = currentTunnel || SERVER_URL;
-        shell.openExternal(url);
-      },
-    },
-    { type: 'separator' },
-    {
       label: 'Quit Application',
       click: () => {
         isQuitting = true;
@@ -868,7 +605,7 @@ function updateTrayMenu() {
   ]);
 
   tray.setContextMenu(contextMenu);
-  tray.setToolTip('Attendly (Port 3000)');
+  tray.setToolTip(`Attendly (Port ${PORT})`);
 }
 
 function setupTray() {
@@ -886,16 +623,11 @@ function setupTray() {
       }
     });
     updateTrayMenu();
-  } catch (err) {
-    console.error('[Electron] Tray init error:', err);
-  }
+  } catch {}
 }
 
-// IPC Handlers
-ipcMain.handle('get-tunnel-url', () => {
-  return tunnelUrl || (fs.existsSync(TUNNEL_FILE) ? fs.readFileSync(TUNNEL_FILE, 'utf-8').trim() : null);
-});
-
+// ── IPC Handlers ──────────────────────────────────────────────────────────────
+ipcMain.handle('get-tunnel-url', () => tunnelUrl);
 ipcMain.on('window-minimize', () => mainWindow?.minimize());
 ipcMain.on('window-maximize', () => {
   if (mainWindow?.isMaximized()) mainWindow.unmaximize();
@@ -903,109 +635,44 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 
-// Docker Lifecycle
-let startedDockerCompose = false;
-
-function isDockerEngineRunning() {
-  try {
-    execSync('docker info', { stdio: 'ignore', timeout: 1200, windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function ensureDockerCompose() {
-  const composePath = path.join(ROOT_DIR, 'docker-compose.yml');
-  if (!fs.existsSync(composePath)) return false;
-
-  // Fast non-blocking check: if Docker daemon is not active, do not hang or fail
-  if (!isDockerEngineRunning()) {
-    console.log('[Electron] Docker Engine is not currently running. Using built-in local engine.');
-    return false;
-  }
-
-  try {
-    console.log('[Electron] Docker Engine detected. Ensuring containers are running...');
-    sendSplashStatus('Connecting container services…');
-    execSync('docker compose up -d', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 10000, windowsHide: true });
-    startedDockerCompose = true;
-    return true;
-  } catch (err) {
-    console.warn('[Electron] Could not start Docker Compose:', err.message);
-    return false;
-  }
-}
-
-function stopDockerCompose() {
-  if (startedDockerCompose) {
-    try {
-      console.log('[Electron] Stopping Docker Compose containers on exit...');
-      execSync('docker compose down', { cwd: ROOT_DIR, stdio: 'ignore', timeout: 8000, windowsHide: true });
-      startedDockerCompose = false;
-    } catch (err) {
-      console.warn('[Electron] Error stopping Docker Compose:', err.message);
-    }
-  }
-}
-
-// App Lifecycle
+// ── Lifecycle & Startup ───────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  // 1. Show Attendly splash loading screen IMMEDIATELY (<50ms) with zero CMD!
   createSplashWindow();
   sendSplashStatus('Starting Attendly…');
 
   buildNativeMenu();
   setupTray();
 
-  // Allow geolocation and essential web permissions on PC without blocking
-  if (session && session.defaultSession) {
-    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      callback(true);
-    });
+  if (session?.defaultSession) {
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => callback(true));
     session.defaultSession.setPermissionCheckHandler(() => true);
   }
 
-  // 2. Fast non-blocking Docker check
+  // Docker Compose auto-start if docker is active
   ensureDockerCompose();
 
-  // 3. Dynamically resolve an open usable port
+  // Port resolution
   PORT = await resolveUsablePort(PORT);
   SERVER_URL = `http://127.0.0.1:${PORT}`;
 
-  // 4. Check if server is already responding
-  const isAlreadyReady = await checkServerReady(500);
+  // Next.js server readiness
+  const isAlreadyReady = await checkServerReady(PORT, 400);
   if (!isAlreadyReady) {
     sendSplashStatus('Initializing local engine…');
     serverProcess = await startServer();
 
-    // Poll until Next.js is responding
-    let ready = false;
     for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      ready = await checkServerReady();
-      if (ready) break;
+      await new Promise((r) => setTimeout(r, 400));
+      if (await checkServerReady(PORT, 600)) break;
       sendSplashStatus(`Connecting to local engine (${i + 1}s)…`);
     }
-  } else {
-    sendSplashStatus('Local engine connected! Initializing worldwide tunnel…');
   }
 
-  // 5. Cloudflare Worldwide Tunnel
-  sendSplashStatus('Starting Cloudflare worldwide link for any Wi-Fi…');
+  // Cloudflare Worldwide Tunnel in background
+  sendSplashStatus('Starting Cloudflare worldwide link…');
   tunnelProcess = startCloudflareTunnel();
 
-  // Allow up to 10 seconds for Worldwide Tunnel to connect before opening main window
-  for (let j = 0; j < 20; j++) {
-    if (tunnelUrl) break;
-    await new Promise((r) => setTimeout(r, 500));
-    sendSplashStatus(`Connecting Cloudflare worldwide link (${Math.round((j + 1) * 0.5)}s)…`);
-  }
-
-  sendSplashStatus(
-    tunnelUrl ? 'Cloudflare worldwide link active! Loading Attendly…' : 'Ready! Loading Attendly…'
-  );
-
+  sendSplashStatus('Loading Attendly…');
   createMainWindow();
 
   app.on('activate', () => {
@@ -1018,23 +685,19 @@ function cleanup() {
   stopDockerCompose();
   if (isQuitting) return;
   isQuitting = true;
-  console.log('[Electron] Cleaning up child processes…');
-  try {
-    const candidatePaths = [
-      TUNNEL_FILE,
-      path.join(path.resolve(require('os').tmpdir()), '.attendly_tunnel'),
-      path.join(path.resolve(require('os').homedir()), '.attendly_tunnel'),
-      path.join(ROOT_DIR, '.tunnel_url'),
-    ];
-    if (globalServerCwd) candidatePaths.push(path.join(globalServerCwd, '.tunnel_url'));
-    for (const c of candidatePaths) {
-      try { if (fs.existsSync(c)) fs.unlinkSync(c); } catch {}
-    }
-  } catch {}
+  console.log('[Electron] Cleaning up processes…');
+
+  const cleanupPaths = [
+    TUNNEL_FILE,
+    path.join(os.tmpdir(), '.attendly_tunnel'),
+    path.join(ROOT_DIR, '.tunnel_url'),
+  ];
+  for (const c of cleanupPaths) {
+    try { if (fs.existsSync(c)) fs.unlinkSync(c); } catch {}
+  }
+
   if (process.platform === 'win32') {
-    try {
-      exec('taskkill /F /IM cloudflared.exe >nul 2>&1', { cwd: getUserDataDir(), windowsHide: true });
-    } catch {}
+    try { execSync('taskkill /F /IM cloudflared.exe >nul 2>&1', { windowsHide: true }); } catch {}
   }
   if (tunnelProcess) {
     try { tunnelProcess.kill(); } catch {}
@@ -1044,13 +707,9 @@ function cleanup() {
     try { serverProcess.kill(); } catch {}
     serverProcess = null;
   }
-  freePort(PORT);
 }
 
-app.on('before-quit', () => {
-  cleanup();
-});
-
+app.on('before-quit', cleanup);
 app.on('window-all-closed', () => {
   cleanup();
   app.quit();

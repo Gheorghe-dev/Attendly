@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { generateQRCodeDataURL, getAttendanceUrl, waitForTunnelUrl, isPrivateOrLocalUrl, getLocalIpAddress } from '@/lib/qrcode';
+import { generateQRCodeDataURL, getAttendanceUrl, isPrivateOrLocalUrl, getLocalIpAddress } from '@/lib/qrcode';
 import { slugifyClassroom } from '@/lib/classroom';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -23,9 +23,6 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       });
     }
     if (!s) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-
-    // Wait up to 4000ms for Cloudflare worldwide tunnel link so QR code encodes it immediately
-    await waitForTunnelUrl(4000);
 
     const hostHeader = req.headers.get('host') ?? '';
     const requestOrigin = hostHeader ? `${req.headers.get('x-forwarded-proto') ?? 'http'}://${hostHeader}` : '';
